@@ -23,6 +23,12 @@ const envSchema = z.object({
     .string()
     .min(80, "Looks too short to be a base58-encoded 64-byte key")
     .max(100, "Looks too long to be a base58-encoded 64-byte key"),
+  NEXT_PUBLIC_PRIVY_APP_ID: z
+    .string()
+    .min(20, "Privy App ID looks too short"),
+  PRIVY_APP_SECRET: z
+    .string()
+    .min(20, "Privy App Secret looks too short"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),

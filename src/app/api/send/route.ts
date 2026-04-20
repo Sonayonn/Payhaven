@@ -41,7 +41,25 @@ const sendRequestSchema = z.object({
 
 // ── Handler ────────────────────────────────────────────────────────────────
 
+import { verifyPrivyToken } from "@/lib/privy/server";
+
 export async function POST(req: NextRequest) {
+  // ── Verify Privy access token ────────────────────────────────────────────
+  const authHeader = req.headers.get("authorization");
+  const token = authHeader?.replace(/^Bearer\s+/i, "");
+  if (!token) {
+    return apiError("UNAUTHORIZED", "Missing Authorization header");
+  }
+
+  let privyUserId: string;
+  try {
+    privyUserId = await verifyPrivyToken(token);
+  } catch {
+    return apiError("UNAUTHORIZED", "Invalid or expired token");
+  }
+
+  log.info("Authenticated send request", { privyUserId });
+
   // Parse body. Reject anything that isn't valid JSON.
   let rawBody: unknown;
   try {

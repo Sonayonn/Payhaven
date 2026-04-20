@@ -10,6 +10,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@privy-io/react-auth": "^3.22.1",
+    "@privy-io/server-auth": "^1.32.5",
+    "@solana-program/memo": "^0.11.0",
+    "@solana-program/token": "^0.13.0",
     "@solana/kit": "^6.8.0",
     "@umbra-privacy/sdk": "^2.0.3",
     "@umbra-privacy/web-zk-prover": "^2.0.1",
