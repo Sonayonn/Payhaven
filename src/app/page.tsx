@@ -1,11 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { LoginButton } from "@/components/LoginButton";
 import { ComposeSend } from "@/components/ComposeSend";
+import { SendHistory, type SendRecord } from "@/components/SendHistory";
 
 export default function Home() {
   const { ready, authenticated } = usePrivy();
+  const [history, setHistory] = useState<SendRecord[]>([]);
+
+  function recordSend(record: Omit<SendRecord, "id" | "timestamp">) {
+    setHistory((prev) => [
+      { ...record, id: crypto.randomUUID(), timestamp: Date.now() },
+      ...prev,
+    ]);
+  }
 
   return (
     <main className="flex flex-col flex-1 items-center p-6 pt-16">
@@ -18,9 +28,12 @@ export default function Home() {
         <LoginButton />
 
         {ready && authenticated && (
-          <div className="w-full border-t pt-6">
-            <ComposeSend />
-          </div>
+          <>
+            <div className="w-full border-t pt-6">
+              <ComposeSend onSuccess={recordSend} />
+            </div>
+            <SendHistory records={history} />
+          </>
         )}
       </div>
     </main>
