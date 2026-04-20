@@ -56,10 +56,13 @@ Not blockers, but would embarrass us if discovered publicly.
 ### No retry logic for the 5-minute freshness window
 
 - **Where:** `src/app/api/send/route.ts`
-- **Why it's debt:** if a user's phone has flaky network, the UTXO creation will fail with a cryptic error (see Day 1 retrospective). User should see "please try again on a better connection" not a stack trace.
-- **Fix:** wrap the create call with an ErrorCatalog that translates Umbra's timestamp error to a user-friendly message.
-- **Blocks launch?** No, but affects demo quality.
-
+- **Status:** Confirmed twice in practice — Day 1 (claim step) and Day 3 (UTXO creation from a degraded ISP). Both failed with `stage: transaction-send`, both recovered on Starlink.
+- **Why it's debt:** users on flaky mobile data will hit this. Our current response is an opaque 502 with `"fetch failed"`.
+- **Fix:**
+  1. Catch `stage: "transaction-send"` in the route handler
+  2. Return a friendly error code (e.g., `NETWORK_UNSTABLE`) with retry guidance
+  3. Optional: client-side retry with exponential backoff (max 2 attempts before asking the user to check their connection)
+- **Blocks launch?** Yes — demo and real users will see this. Promoting from 🟡 to 🔴 and scheduling for Sprint 2 Day 10 alongside the claim flow.
 ---
 
 ## 🟢 Fine for now, track anyway
