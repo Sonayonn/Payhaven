@@ -278,5 +278,4 @@ async function fundWalletIfBelowFloor(
 
   log.info("Wallet funded", { address: target });
 }
-
 export { fundWalletIfBelowFloor };

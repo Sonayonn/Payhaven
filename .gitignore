@@ -53,3 +53,7 @@ recipient.json
 .DS_Store
 .idea/
 .vscode/settings.json
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
