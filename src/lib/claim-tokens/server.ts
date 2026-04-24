@@ -65,6 +65,7 @@ export async function createClaimToken(
     expiresAt: data.expires_at as string,
   };
 }
+
 /**
  * Look up an existing recipient wallet by phone/email identifier.
  *
@@ -85,8 +86,9 @@ export async function findExistingRecipientWallet(
 } | null> {
   const supabase = getSupabase();
 
-  // Match the identifier exactly (case-insensitive for emails would be
-  // slightly better but not critical for hackathon scope).
+  // Match the identifier exactly. Normalization (lowercase emails,
+  // E.164 phones) happens upstream in pregen.ts before this is called,
+  // so both write and read paths converge on the same canonical form.
   const { data, error } = await supabase
     .from("claim_tokens")
     .select("recipient_wallet_id, recipient_address, umbra_registered_at")
@@ -107,5 +109,59 @@ export async function findExistingRecipientWallet(
     walletId: data.recipient_wallet_id as string,
     address: data.recipient_address as string,
     umbraRegisteredAt: data.umbra_registered_at as string | null,
+  };
+}
+
+/**
+ * Look up a claim token by its URL-safe token string.
+ *
+ * Used by the public /claim/[token] page to render what's waiting before
+ * the user logs in. Returns only fields that are safe to expose publicly —
+ * no sender Privy ID, no Umbra keys, no internal IDs. The recipient
+ * identifier is exposed because anyone who has the link already knows
+ * who the intended recipient is (they're the intended recipient, or
+ * someone who was forwarded the link by them).
+ *
+ * Returns null when the token doesn't exist.
+ */
+export async function findClaimTokenByToken(
+  token: string,
+): Promise<{
+  token: string;
+  recipientIdentifier: string;
+  amountUsdcBaseUnits: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+  claimedAt: string | null;
+  createUtxoSignature: string;
+} | null> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from("claim_tokens")
+    .select(
+      "token, recipient_identifier, amount_usdc_base_units, status, created_at, expires_at, claimed_at, create_utxo_signature",
+    )
+    .eq("token", token)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to find claim token: ${error.message}`);
+  }
+  if (!data) return null;
+
+  return {
+    token: data.token as string,
+    recipientIdentifier: data.recipient_identifier as string,
+    // amount_usdc_base_units is stored as bigint in Postgres; Supabase
+    // returns it as number for small values. Keep as string in the API
+    // response so we never lose precision on large amounts.
+    amountUsdcBaseUnits: String(data.amount_usdc_base_units),
+    status: data.status as string,
+    createdAt: data.created_at as string,
+    expiresAt: data.expires_at as string,
+    claimedAt: data.claimed_at as string | null,
+    createUtxoSignature: data.create_utxo_signature as string,
   };
 }

@@ -2,13 +2,21 @@
 
 import { useState } from "react";
 import { sendUsdc, SendFailure } from "@/lib/api/client";
+import { ShareClaimLink } from "./ShareClaimLink";
 
 type RecipientKind = "email" | "phone";
 
 type Status =
   | { kind: "idle" }
   | { kind: "sending" }
-  | { kind: "success"; txSignature: string }
+  | {
+      kind: "success";
+      txSignature: string;
+      claimUrl: string;
+      amountUsdc: number;
+      recipientIdentifier: string;
+      recipientKind: RecipientKind;
+    }
   | { kind: "error"; code: string; message: string };
 
 type ComposeSendProps = {
@@ -25,8 +33,6 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  // Validation per kind. Permissive phone regex — we only need the server-
-  // side normalizer to accept it; the server enforces E.164 properly.
   const emailValid =
     recipientValue === "" ||
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientValue);
@@ -56,14 +62,22 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
         recipient: { kind: recipientKind, value: recipientValue },
         amountUsdc: amountNumber,
       });
-      setStatus({ kind: "success", txSignature: result.createUtxoSignature });
+      setStatus({
+        kind: "success",
+        txSignature: result.createUtxoSignature,
+        claimUrl: result.claimUrl,
+        amountUsdc: amountNumber,
+        recipientIdentifier: recipientValue,
+        recipientKind,
+      });
       onSuccess?.({
         recipientAddress: recipientValue,
         amountUsdc: amountNumber,
         txSignature: result.createUtxoSignature,
       });
-      setRecipientValue("");
-      setAmount("");
+      // Note: we do NOT clear the form here anymore. The form is hidden
+      // while the success panel is showing. The user clicks "Send another"
+      // to reset.
     } catch (err) {
       if (err instanceof SendFailure) {
         setStatus({ kind: "error", code: err.code, message: err.message });
@@ -80,16 +94,48 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
   function switchKind(next: RecipientKind) {
     if (status.kind === "sending") return;
     setRecipientKind(next);
-    setRecipientValue(""); // clear — email and phone don't overlap meaningfully
+    setRecipientValue("");
+  }
+
+  function resetForm() {
+    setStatus({ kind: "idle" });
+    setRecipientValue("");
+    setAmount("");
   }
 
   const isSending = status.kind === "sending";
+
+  // ── Success state: show ShareClaimLink, hide the compose form ──────────
+  if (status.kind === "success") {
+    return (
+      <div className="flex flex-col gap-4 w-full">
+        <h2 className="text-lg font-semibold">Send USDC</h2>
+
+        <ShareClaimLink
+          claimUrl={status.claimUrl}
+          amountUsdc={status.amountUsdc}
+          recipientIdentifier={status.recipientIdentifier}
+          recipientKind={status.recipientKind}
+          onDone={resetForm}
+        />
+
+        <a
+          href={`https://solscan.io/tx/${status.txSignature}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-zinc-500 hover:text-zinc-700 font-mono underline self-center truncate max-w-full"
+        >
+          View transaction on Solscan
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 w-full">
       <h2 className="text-lg font-semibold">Send USDC</h2>
 
-      {/* ── Kind toggle ─────────────────────────────────────────────── */}
+      {/* Kind toggle */}
       <div
         role="tablist"
         aria-label="Recipient type"
@@ -125,13 +171,13 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
         </button>
       </div>
 
-      {/* ── Recipient input ─────────────────────────────────────────── */}
+      {/* Recipient */}
       <label className="flex flex-col gap-1">
         <span className="text-sm text-zinc-700">
           {recipientKind === "email" ? "Recipient email" : "Recipient phone"}
         </span>
         <input
-          key={recipientKind /* reset input state on toggle */}
+          key={recipientKind}
           type={recipientKind === "email" ? "email" : "tel"}
           inputMode={recipientKind === "email" ? "email" : "tel"}
           value={recipientValue}
@@ -154,7 +200,7 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
         )}
       </label>
 
-      {/* ── Amount ──────────────────────────────────────────────────── */}
+      {/* Amount */}
       <label className="flex flex-col gap-1">
         <span className="text-sm text-zinc-700">Amount (USDC)</span>
         <input
@@ -185,23 +231,8 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
 
       {status.kind === "sending" && (
         <div className="text-sm text-zinc-600">
-          Creating shielded deposit. This takes 15-30 seconds — please don&apos;t close the tab.
-        </div>
-      )}
-
-      {status.kind === "success" && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded flex flex-col gap-1">
-          <div className="text-sm font-medium text-green-900">
-            ✓ Sent privately
-          </div>
-          <a
-            href={`https://solscan.io/tx/${status.txSignature}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-green-800 font-mono hover:underline break-all"
-          >
-            {status.txSignature}
-          </a>
+          Creating shielded deposit. This takes 15-30 seconds — please don&apos;t
+          close the tab.
         </div>
       )}
 

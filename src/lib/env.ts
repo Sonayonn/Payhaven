@@ -41,6 +41,7 @@ const envSchema = z.object({
     .min(100, "Supabase service role key looks too short"),
   PRIVY_AUTHORIZATION_KEY: z.string().min(1), 
   PRIVY_AUTHORIZATION_PUBLIC_KEY: z.string().min(1),
+  NEXT_PUBLIC_APP_URL: z.string().url().min(1),
 });
 
 // Parse once at module load. Throws a helpful error if anything is missing

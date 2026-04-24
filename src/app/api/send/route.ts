@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { address } from "@solana/kit";
+import { env } from "@/lib/env";
 import { getPublicBalanceToReceiverClaimableUtxoCreatorFunction } from "@umbra-privacy/sdk";
 import { getCreateReceiverClaimableUtxoFromPublicBalanceProver } from "@umbra-privacy/web-zk-prover";
 import { apiError } from "@/lib/api/errors";
@@ -209,9 +210,21 @@ export async function POST(req: NextRequest) {
     return apiError("INTERNAL_ERROR", "Claim token persistence failed");
   }
 
+// ── Build claim URL for the sender to share ─────────────────────────────
+  // We don't send notifications server-side anymore. The sender gets the
+  // claim URL back and delivers it through their existing relationship with
+  // the recipient — WhatsApp, SMS, whatever messaging channel they already
+  // use. This matches how Nigerian diaspora families actually communicate
+  // and removes a dependency on email deliverability / verified domains.
+  //
+  // Privacy bonus: no third-party email servers in the link delivery path.
+  const appBaseUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  const claimUrl = `${appBaseUrl}/claim/${claimToken.token}`;
+
   return Response.json({
     ok: true,
     claimToken: claimToken.token,
+    claimUrl,
     expiresAt: claimToken.expiresAt,
     createUtxoSignature,
   });

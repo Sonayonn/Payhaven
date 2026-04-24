@@ -10,6 +10,7 @@ export type SendRequest = {
 export type SendSuccess = {
   ok: true;
   claimToken: string;
+  claimUrl: string;             
   expiresAt: string;
   createUtxoSignature: string;
 };
