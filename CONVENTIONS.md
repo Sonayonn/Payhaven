@@ -238,3 +238,85 @@ A few things from Day 1 that aren't rules but should shape how we work in Sprint
 **The last mile is where the undocumented behavior lives.** Registration, creation, scanning — all worked with minor doc drift. The claim — the one step where the on-chain program runs protocol-level checks against our submission — is where the surprise lived. Bake this into Sprint 2-3 schedules: budget extra time for the *final* step of any new flow, not the first.
 
 **Network quality is a variable, not a constant.** "It worked on my machine" hides ISP-level effects. For anything time-sensitive (proofs, blockhashes, signed transactions with TTLs), assume the user might be on a degraded network and design the error path accordingly.
+
+---
+
+## 12. Privy server-side wallet signing (Day 8)
+
+**Rule:** Server-owned wallets created via `privy.walletApi.createWallet({ ownerId })` use a different signing path than user-owned wallets. Our adapter in `src/lib/umbra/privy-signer.ts` handles both, but the key detail is that these wallets must be created with `ownerId` set to `env.PRIVY_AUTHORIZATION_PUBLIC_KEY` or the server cannot sign for them.
+
+**Why:** `privy.walletApi.signMessage` and `signTransaction` verify the signing request against the wallet's `ownerId`. Default-owned wallets fail with `"No valid authorization keys or user signing keys available"`. Wallets owned by our auth key let the server sign independently, without user approval — which is what makes pre-registration and pre-send flows possible.
+
+**Known gotcha:** `privy.importUser({ createSolanaWallet: true })` does NOT accept an `ownerId` parameter. Wallets created through `importUser` default to user-owned. For server-controlled wallets, call `privy.walletApi.createWallet()` directly — don't try to combine user creation with wallet ownership in one call.
+
+---
+
+## 13. Umbra error labeling is misleading (Day 8)
+
+**Rule:** Don't trust the `stage` field on Umbra SDK errors for diagnosis. Always look at the underlying `simulationLogs` (for `TransactionError`) or check on-chain state directly.
+
+**Observed mislabels on `@umbra-privacy/sdk@2.0.3`:**
+
+- Missing `zkProver` on registration → reports as `stage: "transaction-send"` instead of `initialization` or `validation`.
+- Confirmation timeout where all 3 registration txs actually landed on-chain → reports as `stage: "transaction-send"` with no signature, leading you to think the tx failed when it succeeded.
+- Pre-flight simulation failure due to insufficient funds → reports as `stage: "transaction-send"` sometimes, `stage: "transaction-validate"` other times.
+
+**Mitigation in our code:** `src/lib/umbra/wallet-registration.ts` handles both `transaction-send` and `transaction-validate` identically — fund if needed, retry once, lean on SDK idempotency. If the txs landed on first attempt, the retry returns `signatures: []` at zero cost.
+
+**Diagnostic when a registration "fails":** always check Solana Explorer for the wallet address. If you see 3 recent Umbra program transactions all green, the registration worked and the error was a confirmation timeout, not a real failure.
+
+---
+
+## 14. Privy wallet architecture decision (Day 8)
+
+**Rule:** Each Payhaven user gets exactly one Payhaven wallet, not one-per-send. Dedup is enforced at the application layer in Supabase, not at the Privy layer.
+
+**Why:** Privy's `walletApi.createWallet` has no built-in dedup — every call creates a new wallet. Relying on "Privy will give me the same wallet for the same user" doesn't work for server-owned wallets (it does for user-linked ones, but we don't use those). We dedup ourselves:
+
+- Sender wallets: keyed by `privy_user_id` in `server_wallets` table
+- Recipient wallets: keyed by `recipient_identifier` (phone/email) in `claim_tokens` table
+
+Both lookups happen before any Privy API call.
+
+**Consequence:** if you ever wipe these Supabase tables, you'll re-create wallets on next use and orphan the existing ones. There's currently no sweep script to recover orphaned funds. Tracked in DEBT.md.
+
+---
+
+## 15. Mainnet test economics (Day 8)
+
+Debug iteration costs real money. Typical cycle:
+- Create fresh sender wallet: Privy API, free
+- Register sender wallet: ~0.01 SOL from treasury
+- Create UTXO: ~0.002 SOL + USDC amount (from sender's wallet)
+- Recipient wallet create + register: ~0.01 SOL
+
+A full end-to-end test on a brand-new sender+recipient pair costs ~0.025 SOL ≈ $3.75 at current prices. Budget accordingly.
+
+**Rule:** never iterate SDK shape questions on mainnet. Read the `.d.ts`, grep, print types — only run the tx when you're confident the call is correctly shaped.
+
+## 16. Registration state must be verified on-chain, not from SDK return values
+
+**Rule:** Always use `getUserAccountQuerierFunction` to check actual
+registration state. Never trust `register()`'s signature count as a proxy
+for completion.
+
+**Why:** `register({ confidential: true, anonymous: true })` is documented
+idempotent but returns `signatures: []` when "nothing submitted this call"
+— which is ambiguous about whether all requested modes are actually on-
+chain. The SDK can partially complete (e.g., confidential done, anonymous
+timed out) and a subsequent retry can return `[]` without detecting the
+gap. This silently breaks receiver-claimable UTXO creation downstream
+with a misleading "Transaction simulation failed" error.
+
+**Discovery cost:** Day 8 morning through evening. Umbra engineer on
+Discord spotted it by checking on-chain explorer, not SDK returns.
+
+**Correct pattern:**
+```ts
+const query = getUserAccountQuerierFunction({ client });
+const state = await query(walletAddr);
+const isFullyRegistered =
+  state.state === "exists" &&
+  state.data.isUserAccountX25519KeyRegistered &&
+  state.data.isUserCommitmentRegistered;
+```

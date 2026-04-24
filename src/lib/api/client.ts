@@ -3,15 +3,15 @@
 import { getAccessToken } from "@privy-io/react-auth";
 
 export type SendRequest = {
-  recipientAddress: string;
+  recipient: { kind: "email" | "phone"; value: string };
   amountUsdc: number;
 };
 
 export type SendSuccess = {
   ok: true;
-  createProofAccountSignature: string;
+  claimToken: string;
+  expiresAt: string;
   createUtxoSignature: string;
-  closeProofAccountSignature: string | null;
 };
 
 export type SendError = {

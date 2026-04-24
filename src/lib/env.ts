@@ -32,6 +32,15 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
+  SUPABASE_URL: z
+    .string()
+    .url()
+    .refine((v) => v.startsWith("https://"), "must be https"),
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(100, "Supabase service role key looks too short"),
+  PRIVY_AUTHORIZATION_KEY: z.string().min(1), 
+  PRIVY_AUTHORIZATION_PUBLIC_KEY: z.string().min(1),
 });
 
 // Parse once at module load. Throws a helpful error if anything is missing
