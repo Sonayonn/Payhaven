@@ -115,12 +115,13 @@ export async function findExistingRecipientWallet(
 /**
  * Look up a claim token by its URL-safe token string.
  *
- * Used by the public /claim/[token] page to render what's waiting before
- * the user logs in. Returns only fields that are safe to expose publicly —
- * no sender Privy ID, no Umbra keys, no internal IDs. The recipient
- * identifier is exposed because anyone who has the link already knows
- * who the intended recipient is (they're the intended recipient, or
- * someone who was forwarded the link by them).
+ * Returns:
+ *  - Public-safe fields used by /api/claim-info (amount, status, expiry, etc.)
+ *  - Backend-only fields used by /api/claim (recipientAddress, recipientWalletId)
+ *
+ * The route layer is responsible for not leaking the backend-only fields
+ * to unauthenticated requests — see /api/claim-info/[token]/route.ts which
+ * deliberately does not include them in its Response.json.
  *
  * Returns null when the token doesn't exist.
  */
@@ -129,6 +130,8 @@ export async function findClaimTokenByToken(
 ): Promise<{
   token: string;
   recipientIdentifier: string;
+  recipientAddress: string;
+  recipientWalletId: string;
   amountUsdcBaseUnits: string;
   status: string;
   createdAt: string;
@@ -141,7 +144,7 @@ export async function findClaimTokenByToken(
   const { data, error } = await supabase
     .from("claim_tokens")
     .select(
-      "token, recipient_identifier, amount_usdc_base_units, status, created_at, expires_at, claimed_at, create_utxo_signature",
+      "token, recipient_identifier, recipient_address, recipient_wallet_id, amount_usdc_base_units, status, created_at, expires_at, claimed_at, create_utxo_signature",
     )
     .eq("token", token)
     .maybeSingle();
@@ -154,6 +157,8 @@ export async function findClaimTokenByToken(
   return {
     token: data.token as string,
     recipientIdentifier: data.recipient_identifier as string,
+    recipientAddress: data.recipient_address as string,
+    recipientWalletId: data.recipient_wallet_id as string,
     // amount_usdc_base_units is stored as bigint in Postgres; Supabase
     // returns it as number for small values. Keep as string in the API
     // response so we never lose precision on large amounts.
@@ -164,4 +169,32 @@ export async function findClaimTokenByToken(
     claimedAt: data.claimed_at as string | null,
     createUtxoSignature: data.create_utxo_signature as string,
   };
+}
+/**
+ * Mark a claim token as successfully claimed. Idempotent — if already claimed,
+ * does not error (returns the existing claimed_tx_signature instead).
+ *
+ * Called after /api/claim successfully submits to the relayer. The on-chain
+ * nullifier is the source of truth; this DB update is for our own UX
+ * (showing "claimed" in the recipient's history and preventing duplicate
+ * UI operations).
+ */
+export async function markClaimTokenClaimed(params: {
+  token: string;
+  claimedTxSignature: string;
+}): Promise<void> {
+  const supabase = getSupabase();
+
+  const { error } = await supabase
+    .from("claim_tokens")
+    .update({
+      status: "claimed",
+      claimed_at: new Date().toISOString(),
+      claimed_tx_signature: params.claimedTxSignature,
+    })
+    .eq("token", params.token);
+
+  if (error) {
+    throw new Error(`Failed to mark claim token claimed: ${error.message}`);
+  }
 }

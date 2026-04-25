@@ -33,8 +33,6 @@ export function createPrivySigner(params: {
     const signedWire = (signedTransaction as VersionedTransaction).serialize();
     const decoded = txDecoder.decode(signedWire);
 
-    // Merge signatures into the original tx to preserve lifetimeConstraint
-    // and any other fields the wire format drops.
     return {
       ...tx,
       signatures: { ...tx.signatures, ...decoded.signatures },
@@ -45,23 +43,34 @@ export function createPrivySigner(params: {
     address: addr,
 
     async signMessage(message: Uint8Array) {
-      const { signature } = await privy.walletApi.solana.signMessage({
-        walletId,
-        message,
-      });
+  const result = await privy.walletApi.solana.signMessage({
+    walletId,
+    message,
+  });
 
-      log.info("Privy signMessage completed", {
-        walletId,
-        messageLen: message.length,
-        sigLen: signature.length,
-      });
+  // Privy returns { signature: base64-string, encoding: "base64" }.
+  // Umbra's X25519 derivation expects raw signature bytes (Uint8Array).
+  // Convert here, at the trust boundary between Privy and Umbra.
+  const signatureRaw = result.signature;
+  const signature =
+    typeof signatureRaw === "string"
+      ? Uint8Array.from(Buffer.from(signatureRaw, (result as { encoding?: string }).encoding === "base64" ? "base64" : "base64"))
+      : signatureRaw instanceof Uint8Array
+        ? signatureRaw
+        : new Uint8Array(signatureRaw as ArrayBufferLike);
 
-      return {
-        signedMessage: message,
-        signature,
-      };
-    },
+  log.info("Privy signMessage completed", {
+    walletId,
+    messageLen: message.length,
+    sigLen: signature.length,
+    sigIsUint8Array: signature instanceof Uint8Array,
+  });
 
+  return {
+    signedMessage: message,
+    signature,
+  };
+   },
     signTransaction,
 
     async signTransactions<T extends { signatures: Record<string, unknown> }>(

@@ -1,22 +1,12 @@
 import { NextRequest } from "next/server";
 import { apiError } from "@/lib/api/errors";
 import { findClaimTokenByToken } from "@/lib/claim-tokens/server";
+import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
+import { normalizeIdentifier } from "@/lib/privy/pregen";
 import { log } from "@/lib/log";
 
-/**
- * Public claim info endpoint — no auth required.
- *
- * Returns the minimum data needed to render the /claim/[token] page before
- * login: how much, what status, when it was created. Does NOT return the
- * sender's Privy ID, the recipient's Umbra address, or the UTXO signature
- * (those come into play after recipient authenticates and initiates claim).
- *
- * Rate-limiting is a production concern; we don't do it for the hackathon
- * since the only way to hit this endpoint usefully is with a 43-char random
- * token, which is itself the rate limit.
- */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
@@ -39,6 +29,30 @@ export async function GET(
     return apiError("NOT_FOUND", "Claim link not found or invalid");
   }
 
+  // ── Identity check: is the requester the intended recipient? ────────────
+  // If no auth header, we don't try to verify — the client will show the
+  // "sign in to claim" state. Only when the user presents a token do we
+  // compare against recipient_identifier.
+  let isAuthorizedRecipient = false;
+  const authHeader = req.headers.get("authorization");
+  const authToken = authHeader?.replace(/^Bearer\s+/i, "");
+  if (authToken) {
+    try {
+      const { email, phone } = await verifyPrivyTokenAndGetIdentifiers(authToken);
+      const recipientNorm = record.recipientIdentifier; // stored normalized
+      const userIdentifiers: string[] = [];
+      if (email) userIdentifiers.push(normalizeIdentifier(email, "email"));
+      if (phone) userIdentifiers.push(normalizeIdentifier(phone, "phone"));
+      isAuthorizedRecipient = userIdentifiers.includes(recipientNorm);
+    } catch (err) {
+      // Bad/expired token — treat as unauthenticated; don't error the whole
+      // response, just leave isAuthorizedRecipient false.
+      log.warn("Identity check failed on claim-info", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   const now = new Date();
   const expiresAt = new Date(record.expiresAt);
   const isExpired = now > expiresAt;
@@ -51,5 +65,6 @@ export async function GET(
     isExpired,
     expiresAt: record.expiresAt,
     claimedAt: record.claimedAt,
+    isAuthorizedRecipient,
   });
 }
