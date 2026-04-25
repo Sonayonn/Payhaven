@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { address } from "@solana/kit";
-import { env } from "@/lib/env";
-import { getPublicBalanceToReceiverClaimableUtxoCreatorFunction } from "@umbra-privacy/sdk";
-import { getCreateReceiverClaimableUtxoFromPublicBalanceProver } from "@umbra-privacy/web-zk-prover";
+import { getEncryptedBalanceToReceiverClaimableUtxoCreatorFunction } from "@umbra-privacy/sdk";
+import { getCreateReceiverClaimableUtxoFromEncryptedBalanceProver } from "@umbra-privacy/web-zk-prover";
 import { apiError } from "@/lib/api/errors";
 import { log } from "@/lib/log";
 import { usdcToBaseUnits } from "@/lib/money";
@@ -12,12 +11,14 @@ import { getPrivyUmbraClient } from "@/lib/umbra/privy-umbra-client";
 import { registerWalletIfNeeded } from "@/lib/umbra/wallet-registration";
 import { verifyPrivyToken } from "@/lib/privy/server";
 import { ensureSenderWallet } from "@/lib/privy/sender-wallet";
+import { getEncryptedUsdcBalance } from "@/lib/umbra/encrypted-balance";
 import {
   pregenerateRecipientWallet,
   normalizeIdentifier,
   type PregenResult,
 } from "@/lib/privy/pregen";
 import { createClaimToken } from "@/lib/claim-tokens/server";
+import { env } from "@/lib/env";
 import type { U64 } from "@umbra-privacy/sdk/types";
 
 // ── Request validation ─────────────────────────────────────────────────────
@@ -32,6 +33,18 @@ const sendRequestSchema = z.object({
 
 // ── Handler ────────────────────────────────────────────────────────────────
 
+/**
+ * POST /api/send — sender-originated private USDC transfer.
+ *
+ * Privacy model (post-Step-3 upgrade):
+ *   USDC moves from sender's encrypted balance → Umbra shielded pool →
+ *   recipient's encrypted UTXO. The sender's public ATA does not change.
+ *   On-chain footprint: "sender wallet interacted with Umbra program."
+ *   Amount, destination, recipient all encrypted.
+ *
+ * Sender must have shielded their balance first (via /api/shield) so that
+ * encrypted balance >= amount. Public ATA balance is not consulted here.
+ */
 export async function POST(req: NextRequest) {
   // ── Verify Privy access token ────────────────────────────────────────────
   const authHeader = req.headers.get("authorization");
@@ -64,10 +77,10 @@ export async function POST(req: NextRequest) {
 
   const { recipient: rawRecipient, amountUsdc } = parsed.data;
 
-  // Normalize the recipient identifier at the edge so dedup lookups,
-  // logs, and claim_tokens.recipient_identifier persistence all share
-  // one canonical form. Emails lowercase+trim, phones collapse to E.164.
-  // Rejects non-E.164 phone input with a user-visible error.
+  // Normalize the recipient identifier at the edge so dedup lookups, logs,
+  // and claim_tokens.recipient_identifier persistence all share one canonical
+  // form. Emails lowercase+trim, phones collapse to E.164. Non-E.164 phone
+  // input rejected with a user-visible error.
   let recipient: { kind: "email" | "phone"; value: string };
   try {
     recipient = {
@@ -96,9 +109,6 @@ export async function POST(req: NextRequest) {
   });
 
   // ── Resolve sender's Payhaven wallet ─────────────────────────────────────
-  // Should already exist (created on first login via /api/sender-wallet).
-  // ensureSenderWallet is idempotent: if already registered, it returns
-  // immediately from Supabase with no Privy or on-chain calls.
   let senderWallet;
   try {
     senderWallet = await ensureSenderWallet(senderPrivyUserId);
@@ -113,6 +123,46 @@ export async function POST(req: NextRequest) {
     senderAddress: senderWallet.solanaAddress,
   });
 
+  // ── Precheck: does sender have enough in encrypted balance? ──────────────
+  // UX gate: surface a clear error code if the user hasn't shielded enough.
+  // The encrypted-balance UTXO creator would fail at SDK level otherwise,
+  // but the error message would be opaque. INSUFFICIENT_PRIVATE_BALANCE
+  // tells the frontend to prompt "shield more first".
+  const amountBaseBigInt = BigInt(amountBaseUnits.toString());
+  let senderEncryptedBalance;
+  try {
+    senderEncryptedBalance = await getEncryptedUsdcBalance({
+      walletId: senderWallet.walletId,
+      address: senderWallet.solanaAddress,
+    });
+  } catch (err) {
+    return apiError("UPSTREAM_ERROR", "Failed to read sender encrypted balance", {
+      logFields: { err: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
+  if (
+    senderEncryptedBalance.state !== "shared" ||
+    senderEncryptedBalance.balanceBaseUnits < amountBaseBigInt
+  ) {
+    log.warn("Insufficient encrypted balance for send", {
+      senderAddress: senderWallet.solanaAddress,
+      requested: amountBaseBigInt.toString(),
+      available: senderEncryptedBalance.balanceBaseUnits.toString(),
+      state: senderEncryptedBalance.state,
+    });
+    return apiError(
+      "BAD_REQUEST",
+      "Not enough in your private balance. Shield more USDC first.",
+      {
+        logFields: {
+          requested: amountBaseBigInt.toString(),
+          available: senderEncryptedBalance.balanceBaseUnits.toString(),
+        },
+      },
+    );
+  }
+
   // ── Pregenerate (or reuse) recipient wallet ──────────────────────────────
   let pregen: PregenResult;
   try {
@@ -126,8 +176,8 @@ export async function POST(req: NextRequest) {
   const recipientWalletId = pregen.walletId;
 
   // ── Pre-register recipient with Umbra ────────────────────────────────────
-  // Receiver-claimable UTXOs require an on-chain X25519 key for the
-  // recipient. Skipped entirely on repeat sends (previouslyRegistered=true).
+  // Receiver-claimable UTXOs require an on-chain X25519 key for the recipient.
+  // Skipped on repeat sends (previouslyRegistered=true).
   if (!pregen.previouslyRegistered) {
     try {
       const { alreadyRegistered, signatures } = await registerWalletIfNeeded({
@@ -154,70 +204,90 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Create UTXO via Umbra — signed by the SENDER's wallet ────────────────
-  // This is the core privacy guarantee: USDC leaves the sender's ATA and
-  // lands in the shielded pool, encrypted to the recipient. The on-chain
-  // graph shows only "sender → Umbra program." No treasury intermediary.
-  let createUtxoSignature: string;
+  // ── Create UTXO via Umbra — from sender's ENCRYPTED balance ──────────────
+  // Core privacy guarantee in its strongest form. Sender's public ATA balance
+  // does not change. On-chain footprint: just "sender interacted with Umbra."
+  // Amount, destination, recipient all hidden.
+  let queueSignature: string;
+  let callbackSignature: string | undefined;
+  let callbackElapsedMs: number | undefined;
   try {
     const senderClient = await getPrivyUmbraClient({
       walletId: senderWallet.walletId,
       address: senderWallet.solanaAddress,
     });
-    const zkProver = getCreateReceiverClaimableUtxoFromPublicBalanceProver();
-    const createUtxo = getPublicBalanceToReceiverClaimableUtxoCreatorFunction(
+    const zkProver = getCreateReceiverClaimableUtxoFromEncryptedBalanceProver();
+    const createUtxo = getEncryptedBalanceToReceiverClaimableUtxoCreatorFunction(
       { client: senderClient },
       { zkProver },
     );
 
     const result = await createUtxo({
       destinationAddress: address(recipientAddress),
-      mint: USDC_MAINNET_MINT,
+      mint: address(USDC_MAINNET_MINT),
       amount: amountBaseUnits,
     });
-    createUtxoSignature = result.createUtxoSignature;
 
-    log.info("UTXO created by sender wallet", {
-      createUtxoSignature,
+    // CreateUtxoFromEncryptedBalanceResult shape per SDK types:
+    //   queueSignature: TransactionSignature (required)
+    //   callbackSignature?: TransactionSignature (when MPC completes in time)
+    //   callbackElapsedMs?: number
+    //   plus rent-related signatures we don't surface
+    const raw = result as unknown as Record<string, unknown>;
+    queueSignature = String(raw.queueSignature ?? "");
+    callbackSignature =
+      typeof raw.callbackSignature === "string"
+        ? raw.callbackSignature
+        : undefined;
+    callbackElapsedMs =
+      typeof raw.callbackElapsedMs === "number"
+        ? raw.callbackElapsedMs
+        : undefined;
+
+    log.info("UTXO created from encrypted balance", {
+      queueSignature,
+      callbackSignature,
+      callbackElapsedMs,
       senderAddress: senderWallet.solanaAddress,
       recipientAddress,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stage = (err as { stage?: string } | null)?.stage;
-    return apiError("UPSTREAM_ERROR", "UTXO creation failed", {
+    log.error("Encrypted-balance UTXO creation failed", {
+      stage,
+      message,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return apiError("UPSTREAM_ERROR", "Send failed", {
       logFields: { message, stage },
     });
   }
 
   // ── Create claim token ───────────────────────────────────────────────────
+  // Use queueSignature as the createUtxoSignature for compatibility with the
+  // existing claim_tokens schema and downstream claim flow. The callback
+  // signature is also relevant on-chain but doesn't need to be persisted.
   let claimToken;
   try {
     claimToken = await createClaimToken({
       recipientIdentifier: recipient.value,
       recipientAddress,
       recipientWalletId,
-      amountUsdcBaseUnits: BigInt(amountBaseUnits.toString()),
-      createUtxoSignature,
+      amountUsdcBaseUnits: amountBaseBigInt,
+      createUtxoSignature: queueSignature,
       senderPrivyUserId,
       umbraRegisteredAt: new Date(),
     });
   } catch (err) {
     log.error("Claim token creation failed — UTXO is orphaned", {
       err: err instanceof Error ? err.message : String(err),
-      createUtxoSignature,
+      queueSignature,
     });
     return apiError("INTERNAL_ERROR", "Claim token persistence failed");
   }
 
-// ── Build claim URL for the sender to share ─────────────────────────────
-  // We don't send notifications server-side anymore. The sender gets the
-  // claim URL back and delivers it through their existing relationship with
-  // the recipient — WhatsApp, SMS, whatever messaging channel they already
-  // use. This matches how Nigerian diaspora families actually communicate
-  // and removes a dependency on email deliverability / verified domains.
-  //
-  // Privacy bonus: no third-party email servers in the link delivery path.
+  // ── Build claim URL for the sender to share ──────────────────────────────
   const appBaseUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   const claimUrl = `${appBaseUrl}/claim/${claimToken.token}`;
 
@@ -226,6 +296,8 @@ export async function POST(req: NextRequest) {
     claimToken: claimToken.token,
     claimUrl,
     expiresAt: claimToken.expiresAt,
-    createUtxoSignature,
+    createUtxoSignature: queueSignature,
+    callbackSignature,
+    callbackElapsedMs,
   });
 }

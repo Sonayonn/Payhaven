@@ -17,7 +17,8 @@ export type ApiErrorCode =
   | "NOT_FOUND"
   | "VALIDATION_FAILED"
   | "UPSTREAM_ERROR"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+   ;
 
 const STATUS_FOR_CODE: Record<ApiErrorCode, number> = {
   BAD_REQUEST: 400,
