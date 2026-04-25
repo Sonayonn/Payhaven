@@ -38,8 +38,8 @@ import { log } from "@/lib/log";
 // MAX_ATTEMPTS, and only declare success when both X25519 and commitment
 // flags are true on-chain.
 
-const REGISTRATION_SOL_LAMPORTS = 30_000_000n; // 0.03 SOL top-up
-const FUNDING_FLOOR_LAMPORTS = 15_000_000n; // 0.015 SOL floor
+const REGISTRATION_SOL_LAMPORTS = 15_000_000n; // 0.015 SOL top-up
+const FUNDING_FLOOR_LAMPORTS = 1_000_000n; // 0.01 SOL floor
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
 
