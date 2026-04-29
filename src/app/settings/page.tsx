@@ -202,7 +202,7 @@ export default function SettingsPage() {
             </p>
             <div className="flex flex-col gap-1.5 pt-1">
               <a
-                href="https://github.com/anthropic-ai/payhaven"
+                href="https://github.com/Sonayonn/Payhaven"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs font-medium text-brand hover:text-brand-dark underline self-start"
