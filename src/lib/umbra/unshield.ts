@@ -25,7 +25,7 @@ import type { U64 } from "@umbra-privacy/sdk/types";
  */
 
 export type UnshieldResult = {
-  /** Handler tx — confirms on Solana before MPC kicks off. */
+  /** Handler tx, confirms on Solana before MPC kicks off. */
   queueSignature: string;
   /** Arcium MPC callback. Present when MPC computation completed. */
   callbackSignature?: string;

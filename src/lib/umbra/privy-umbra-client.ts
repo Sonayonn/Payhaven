@@ -9,7 +9,7 @@ import { log } from "@/lib/log";
 /**
  * Build an Umbra client for any Privy-owned wallet (sender or recipient).
  *
- * The client is not cached — each call constructs a fresh client because
+ * The client is not cached, each call constructs a fresh client because
  * the signer is bound to a specific walletId. Caching by walletId is a
  * future optimization; today, the master-seed derivation round-trip is
  * the only real cost and it's ~200ms per call.

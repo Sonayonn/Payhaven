@@ -9,7 +9,7 @@ import { usdcToBaseUnits } from "@/lib/money";
 import { USDC_MAINNET_MINT } from "@/lib/umbra/constants";
 import { getPrivyUmbraClient } from "@/lib/umbra/privy-umbra-client";
 import { registerWalletIfNeeded } from "@/lib/umbra/wallet-registration";
-import { verifyPrivyToken } from "@/lib/privy/server";
+import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
 import { ensureSenderWallet } from "@/lib/privy/sender-wallet";
 import { getEncryptedUsdcBalance } from "@/lib/umbra/encrypted-balance";
 import {
@@ -34,7 +34,7 @@ const sendRequestSchema = z.object({
 // ── Handler ────────────────────────────────────────────────────────────────
 
 /**
- * POST /api/send — sender-originated private USDC transfer.
+ * POST /api/send, sender-originated private USDC transfer.
  *
  * Privacy model (post-Step-3 upgrade):
  *   USDC moves from sender's encrypted balance → Umbra shielded pool →
@@ -53,12 +53,13 @@ export async function POST(req: NextRequest) {
     return apiError("UNAUTHORIZED", "Missing Authorization header");
   }
 
-  let senderPrivyUserId: string;
+  let identity;
   try {
-    senderPrivyUserId = await verifyPrivyToken(token);
+    identity = await verifyPrivyTokenAndGetIdentifiers(token);
   } catch {
     return apiError("UNAUTHORIZED", "Invalid or expired token");
   }
+  const senderPrivyUserId = identity.privyUserId;
 
   // ── Parse + validate body ────────────────────────────────────────────────
   let rawBody: unknown;
@@ -111,7 +112,10 @@ export async function POST(req: NextRequest) {
   // ── Resolve sender's Payhaven wallet ─────────────────────────────────────
   let senderWallet;
   try {
-    senderWallet = await ensureSenderWallet(senderPrivyUserId);
+    senderWallet = await ensureSenderWallet(senderPrivyUserId, {
+      email: identity.email,
+      phone: identity.phone,
+    });
   } catch (err) {
     return apiError("UPSTREAM_ERROR", "Failed to resolve sender wallet", {
       logFields: { err: err instanceof Error ? err.message : String(err) },
@@ -199,12 +203,12 @@ export async function POST(req: NextRequest) {
       );
     }
   } else {
-    log.info("Recipient previously registered — skipping registration", {
+    log.info("Recipient previously registered, skipping registration", {
       recipientAddress,
     });
   }
 
-  // ── Create UTXO via Umbra — from sender's ENCRYPTED balance ──────────────
+  // ── Create UTXO via Umbra, from sender's ENCRYPTED balance ──────────────
   // Core privacy guarantee in its strongest form. Sender's public ATA balance
   // does not change. On-chain footprint: just "sender interacted with Umbra."
   // Amount, destination, recipient all hidden.
@@ -280,7 +284,7 @@ export async function POST(req: NextRequest) {
       umbraRegisteredAt: new Date(),
     });
   } catch (err) {
-    log.error("Claim token creation failed — UTXO is orphaned", {
+    log.error("Claim token creation failed, UTXO is orphaned", {
       err: err instanceof Error ? err.message : String(err),
       queueSignature,
     });

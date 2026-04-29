@@ -1,5 +1,5 @@
 /**
- * Treasury Umbra client — server-only.
+ * Treasury Umbra client, server-only.
  *
  * Loaded lazily on first use, cached for the process lifetime. Do NOT import
  * from client components; this pulls in server-only dependencies and the

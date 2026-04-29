@@ -10,7 +10,7 @@ import { normalizeIdentifier } from "@/lib/privy/pregen";
 import { claimReceiverUtxo } from "@/lib/umbra/claim-utxo";
 
 /**
- * POST /api/claim/[token] — claim the receiver-claimable UTXO.
+ * POST /api/claim/[token], claim the receiver-claimable UTXO.
  *
  * Recipient must be authenticated via Privy AND their email/phone must match
  * the claim_token's recipient_identifier. Server-side signs the claim using
@@ -87,7 +87,7 @@ export async function POST(
   // ── Need recipient_wallet_id to build the Umbra client ──────────────────
   // findClaimTokenByToken doesn't currently return recipient_wallet_id publicly
   // (it's an internal detail). Re-query with full select, or extend the helper.
-  // For simplicity, we extend findClaimTokenByToken below — see #6.
+  // For simplicity, we extend findClaimTokenByToken below, see #6.
   const recipientWalletId = (record as unknown as { recipientWalletId?: string })
     .recipientWalletId;
   const recipientAddress = (record as unknown as { recipientAddress?: string })
@@ -97,7 +97,7 @@ export async function POST(
     log.error("Claim token missing recipient wallet details", { token });
     return apiError(
       "INTERNAL_ERROR",
-      "Claim token record is incomplete — contact support",
+      "Claim token record is incomplete, contact support",
     );
   }
 

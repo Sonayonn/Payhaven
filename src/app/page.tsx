@@ -1,111 +1,168 @@
 "use client";
 
-import { useState } from "react";
-import { usePrivy, getAccessToken } from "@privy-io/react-auth";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { usePrivy } from "@privy-io/react-auth";
 import { LoginButton } from "@/components/LoginButton";
-import { SenderWalletCard } from "@/components/SenderWalletCard";
-import { ComposeSend } from "@/components/ComposeSend";
-import { SendHistory, type SendRecord } from "@/components/SendHistory";
+import { BalanceDashboard } from "@/components/BalanceDashboard";
+import { SendModal } from "@/components/SendModal";
+import { ShieldModal } from "@/components/ShieldModal";
+import { UnshieldModal } from "@/components/UnshieldModal";
+import { CashOutModal } from "@/components/CashOutModal";
+import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useBalances } from "@/hooks/useBalances";
+ import Link from "next/link";
 
 export default function Home() {
   const { ready, authenticated } = usePrivy();
-  const [history, setHistory] = useState<SendRecord[]>([]);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  function recordSend(record: Omit<SendRecord, "id" | "timestamp">) {
-    setHistory((prev) => [
-      { ...record, id: crypto.randomUUID(), timestamp: Date.now() },
-      ...prev,
-    ]);
-  }
+  const [sendOpen, setSendOpen] = useState(false);
+  const [shieldOpen, setShieldOpen] = useState(false);
+  const [unshieldOpen, setUnshieldOpen] = useState(false);
+  const [cashOutOpen, setCashOutOpen] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+
+  const [reopenCashOutAfterUnshield, setReopenCashOutAfterUnshield] =
+    useState(false);
+
+  // Session flags for PrivacyTimeline. Reset on page refresh, that's the
+  // right semantic for "recently." A fresh page load is a fresh footprint;
+  // these only show steps the user has actually performed in this session.
+  const [hasUnshieldedRecently, setHasUnshieldedRecently] = useState(false);
+  const [hasInitiatedCashOut, setHasInitiatedCashOut] = useState(false);
+
+  const balances = useBalances();
+
+  useEffect(() => {
+    const action = searchParams.get("action");
+    if (action === "send" && ready && authenticated) {
+      setSendOpen(true);
+      router.replace("/", { scroll: false });
+    }
+  }, [searchParams, ready, authenticated, router]);
 
   return (
-    <main className="flex flex-col flex-1 items-center p-4 pt-8 sm:p-6 sm:pt-16">
+    <main className="flex flex-col flex-1 items-center p-4 pt-6 sm:p-6 sm:pt-8">
+      <div className="w-full max-w-md flex justify-end gap-2 mb-2">
+        <ThemeToggle />
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          className="w-10 h-10 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-subtle transition-colors"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </Link>
+      </div>
+
       <div className="flex flex-col items-center gap-6 max-w-md w-full">
-        <div className="flex flex-col items-center gap-2">
-          <h1 className="text-3xl font-semibold">Payhaven</h1>
-          <p className="text-zinc-600 text-sm">Private USDC remittance.</p>
+        <div className="flex flex-col items-center gap-3 pt-4">
+          <Logo variant="lockup" size={40} />
+          <p className="text-muted text-sm">Private USDC remittance.</p>
         </div>
 
         <LoginButton />
 
         {ready && authenticated && (
           <>
-            <SenderWalletCard />
+            <BalanceDashboard
+              wallet={balances.wallet}
+              encrypted={balances.encrypted}
+              loading={balances.loading}
+              error={balances.error}
+              onRefresh={balances.refresh}
+              historyRefreshKey={historyRefreshKey}
+              hasUnshieldedRecently={hasUnshieldedRecently}
+              hasInitiatedCashOut={hasInitiatedCashOut}
+              onSend={() => setSendOpen(true)}
+              onShield={() => setShieldOpen(true)}
+              onUnshield={() => setUnshieldOpen(true)}
+              onCashOut={() => setCashOutOpen(true)}
+            />
 
-            <div className="w-full border-t pt-6">
-              <ComposeSend onSuccess={recordSend} />
-            </div>
+            <SendModal
+              open={sendOpen}
+              onClose={() => {
+                setSendOpen(false);
+                balances.refresh();
+              }}
+              onSendComplete={() => {
+                setHistoryRefreshKey((k) => k + 1);
+                // refresh moved to onClose.
+              }}
+            />
 
-            <SendHistory records={history} />
+            <ShieldModal
+              open={shieldOpen}
+              onClose={() => {
+                setShieldOpen(false);
+                // Refresh AFTER the modal closes so the number-roll plays
+                // on the dashboard with the user's full attention, not
+                // hidden behind a modal that's still up.
+                balances.refresh();
+              }}
+              publicBalanceBaseUnits={
+                balances.wallet?.usdcBalanceBaseUnits ?? "0"
+              }
+              onShieldComplete={() => {
+                // Intentionally empty, refresh moved to onClose.
+                // The shield itself succeeded; the dashboard will reflect
+                // it the moment the user dismisses the modal.
+              }}
+            />
 
-            <DebugShieldButton />
+            <UnshieldModal
+              open={unshieldOpen}
+              onClose={() => {
+                setUnshieldOpen(false);
+                balances.refresh();
+                if (reopenCashOutAfterUnshield) {
+                  setReopenCashOutAfterUnshield(false);
+                  setCashOutOpen(true);
+                }
+              }}
+              privateBalanceBaseUnits={
+                balances.encrypted?.balanceBaseUnits ?? "0"
+              }
+              onUnshieldComplete={() => {
+                setHasUnshieldedRecently(true);
+              }}
+            />
+
+            <CashOutModal
+              open={cashOutOpen}
+              onClose={() => setCashOutOpen(false)}
+              publicBalanceBaseUnits={
+                balances.wallet?.usdcBalanceBaseUnits ?? "0"
+              }
+              privateBalanceBaseUnits={
+                balances.encrypted?.balanceBaseUnits ?? "0"
+              }
+              onRequestUnshield={() => {
+                setReopenCashOutAfterUnshield(true);
+                setCashOutOpen(false);
+                setUnshieldOpen(true);
+              }}
+              onCashOutInitiated={() => setHasInitiatedCashOut(true)}
+            />
           </>
         )}
       </div>
     </main>
-  );
-}
-
-function DebugShieldButton() {
-  async function testEncryptedBalance() {
-    const tok = await getAccessToken();
-    const r = await fetch("/api/encrypted-balance", {
-      headers: { Authorization: `Bearer ${tok}` },
-    });
-    console.log("Encrypted balance:", await r.json());
-  }
-
-  async function testShield() {
-    const tok = await getAccessToken();
-    const r = await fetch("/api/shield", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tok}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ amountUsdc: 0.10 }),
-    });
-    console.log("Shield result:", await r.json());
-  }
-
-  async function testUnshield() {
-    const tok = await getAccessToken();
-    const r = await fetch("/api/unshield", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tok}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ amountUsdc: 0.05 }),
-    });
-    console.log("Unshield result:", await r.json());
-  }
-
-  return (
-    <div className="mt-8 p-4 border-2 border-dashed border-orange-300 rounded w-full">
-      <div className="text-xs font-bold text-orange-700 mb-2">
-        DEBUG (remove later)
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={testEncryptedBalance}
-          className="px-3 py-2 bg-blue-500 text-white text-sm rounded"
-        >
-          Check encrypted balance
-        </button>
-        <button
-          onClick={testShield}
-          className="px-3 py-2 bg-orange-500 text-white text-sm rounded"
-        >
-          Shield $0.10
-        </button>
-        <button
-          onClick={testUnshield}
-          className="px-3 py-2 bg-purple-500 text-white text-sm rounded"
-        >
-          Unshield $0.05
-        </button>
-      </div>
-    </div>
   );
 }

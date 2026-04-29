@@ -2,14 +2,14 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError } from "@/lib/api/errors";
 import { log } from "@/lib/log";
-import { verifyPrivyToken } from "@/lib/privy/server";
+import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
 import { ensureSenderWallet } from "@/lib/privy/sender-wallet";
 import { usdcToBaseUnits } from "@/lib/money";
 import { unshieldUsdc } from "@/lib/umbra/unshield";
 import { getEncryptedUsdcBalance } from "@/lib/umbra/encrypted-balance";
 
 /**
- * POST /api/unshield — move USDC from user's encrypted balance to their public ATA.
+ * POST /api/unshield, move USDC from user's encrypted balance to their public ATA.
  *
  * Body: { amountUsdc: number }
  *
@@ -17,8 +17,8 @@ import { getEncryptedUsdcBalance } from "@/lib/umbra/encrypted-balance";
  * Operation takes 5-30s due to MPC callback wait.
  *
  * Failure modes:
- *   - User has no encrypted USDC balance (or insufficient) — caller validates this
- *   - Arcium MPC callback times out — per Day 8 lesson, the unshield may have
+ *   - User has no encrypted USDC balance (or insufficient), caller validates this
+ *   - Arcium MPC callback times out, per Day 8 lesson, the unshield may have
  *     actually landed; check Solscan before retrying
  */
 
@@ -34,9 +34,9 @@ export async function POST(req: NextRequest) {
     return apiError("UNAUTHORIZED", "Missing Authorization header");
   }
 
-  let privyUserId: string;
+  let identity;
   try {
-    privyUserId = await verifyPrivyToken(token);
+    identity = await verifyPrivyTokenAndGetIdentifiers(token);
   } catch {
     return apiError("UNAUTHORIZED", "Invalid or expired token");
   }
@@ -70,7 +70,10 @@ export async function POST(req: NextRequest) {
   // ── Resolve sender wallet ────────────────────────────────────────────────
   let wallet;
   try {
-    wallet = await ensureSenderWallet(privyUserId);
+    wallet = await ensureSenderWallet(identity.privyUserId, {
+      email: identity.email,
+      phone: identity.phone,
+    });
   } catch (err) {
     return apiError("UPSTREAM_ERROR", "Failed to resolve wallet", {
       logFields: { err: err instanceof Error ? err.message : String(err) },

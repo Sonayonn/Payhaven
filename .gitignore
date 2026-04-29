@@ -40,7 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Payhaven secrets — NEVER commit
+# Payhaven secrets, NEVER commit
 .env
 .env.local
 .env.production

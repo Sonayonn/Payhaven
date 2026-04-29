@@ -19,7 +19,7 @@ import type { U64 } from "@umbra-privacy/sdk/types";
  *   - SDK waits for both handler tx + MPC callback to confirm before resolving.
  *
  * Per Day 8 lesson §13: `transaction-send` errors can mean "landed but timed out."
- * Don't auto-retry on that stage — verify on-chain first.
+ * Don't auto-retry on that stage, verify on-chain first.
  *
  * Return shape per SDK's DepositResult:
  *   - queueSignature: the handler tx that queues the MPC computation (required)

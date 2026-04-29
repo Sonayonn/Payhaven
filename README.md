@@ -36,8 +36,8 @@ npm run dev
 
 ## Conventions
 
-See [`CONVENTIONS.md`](./CONVENTIONS.md) — hard rules for working on this codebase, including Umbra SDK gotchas, money validation, and secret handling.
+See [`CONVENTIONS.md`](./CONVENTIONS.md), hard rules for working on this codebase, including Umbra SDK gotchas, money validation, and secret handling.
 
 ## License
 
-MIT (pending — will be added before hackathon submission).
+MIT (pending, will be added before hackathon submission).

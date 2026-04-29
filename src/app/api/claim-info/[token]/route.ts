@@ -30,7 +30,7 @@ export async function GET(
   }
 
   // ── Identity check: is the requester the intended recipient? ────────────
-  // If no auth header, we don't try to verify — the client will show the
+  // If no auth header, we don't try to verify, the client will show the
   // "sign in to claim" state. Only when the user presents a token do we
   // compare against recipient_identifier.
   let isAuthorizedRecipient = false;
@@ -45,7 +45,7 @@ export async function GET(
       if (phone) userIdentifiers.push(normalizeIdentifier(phone, "phone"));
       isAuthorizedRecipient = userIdentifiers.includes(recipientNorm);
     } catch (err) {
-      // Bad/expired token — treat as unauthenticated; don't error the whole
+      // Bad/expired token, treat as unauthenticated; don't error the whole
       // response, just leave isAuthorizedRecipient false.
       log.warn("Identity check failed on claim-info", {
         err: err instanceof Error ? err.message : String(err),

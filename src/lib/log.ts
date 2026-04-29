@@ -34,7 +34,7 @@ function emit(level: LogLevel, msg: string, fields?: Record<string, unknown>) {
   };
 
   if (env.NODE_ENV === "production") {
-    // JSON per line — standard for log aggregators (Datadog, Better Stack etc.)
+    // JSON per line, standard for log aggregators (Datadog, Better Stack etc.)
     console[level === "debug" ? "log" : level](JSON.stringify(entry));
     return;
   }

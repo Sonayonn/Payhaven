@@ -4,6 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { usePrivy, getAccessToken } from "@privy-io/react-auth";
 import { LoginButton } from "@/components/LoginButton";
+import { Logo } from "@/components/Logo";
+import { redactIdentifier } from "@/lib/format/identifiers";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { ClaimProgress } from "@/components/ClaimProgress";
+import { ClaimSuccess } from "@/components/ClaimSuccess";
 
 type ClaimInfo = {
   amountUsdcBaseUnits: string;
@@ -17,7 +22,7 @@ type ClaimInfo = {
 
 type ClaimStatus =
   | { kind: "idle" }
-  | { kind: "claiming" }
+  | { kind: "claiming" } // while POST is in flight + while ClaimProgress plays
   | { kind: "success"; signatures: string[] }
   | { kind: "error"; message: string };
 
@@ -26,17 +31,17 @@ function formatUsdc(baseUnits: string): string {
   return n.toFixed(2);
 }
 
-function redactIdentifier(identifier: string): string {
-  if (identifier.includes("@")) {
-    const [local, domain] = identifier.split("@");
-    const visible = local.slice(0, 3);
-    return `${visible}${"*".repeat(Math.max(1, local.length - 3))}@${domain}`;
-  }
-  if (identifier.startsWith("+")) {
-    const last4 = identifier.slice(-4);
-    return `${identifier.slice(0, 4)}${"*".repeat(Math.max(0, identifier.length - 8))}${last4}`;
-  }
-  return identifier;
+function ClaimShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="flex flex-col flex-1 items-center p-4 sm:p-6 min-h-screen bg-background">
+      <div className="w-full max-w-md flex justify-end mb-2">
+        <ThemeToggle />
+      </div>
+      <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center gap-6">
+        {children}
+      </div>
+    </main>
+  );
 }
 
 export default function ClaimPage() {
@@ -48,22 +53,28 @@ export default function ClaimPage() {
   const [error, setError] = useState<string | null>(null);
   const [claimStatus, setClaimStatus] = useState<ClaimStatus>({ kind: "idle" });
 
+  // Drives ClaimProgress: flips true when the API resolves, then progress plays
+  // its remaining stages and calls handleProgressComplete to flip to success.
+  const [isClaimComplete, setIsClaimComplete] = useState(false);
+  const [pendingResult, setPendingResult] = useState<{
+    signatures: string[];
+  } | null>(null);
+
   const fetchClaimInfo = useCallback(async () => {
     if (!token) return;
     try {
-      // Include auth token if available so server can compute isAuthorizedRecipient.
       const headers: HeadersInit = {};
       if (authenticated) {
         const accessToken = await getAccessToken();
         if (accessToken) {
-          headers.Authorization = `Bearer ${accessToken}`;
+          headers.Authorization = "Bearer " + accessToken;
         }
       }
 
-      const res = await fetch(`/api/claim-info/${token}`, { headers });
+      const res = await fetch("/api/claim-info/" + token, { headers });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.message ?? `HTTP ${res.status}`);
+        throw new Error(body.message ?? "HTTP " + res.status);
       }
       const data = (await res.json()) as ClaimInfo;
       setInfo(data);
@@ -75,66 +86,76 @@ export default function ClaimPage() {
     }
   }, [token, authenticated]);
 
-  // Refetch on auth change so isAuthorizedRecipient updates after login/logout.
   useEffect(() => {
     fetchClaimInfo();
   }, [fetchClaimInfo]);
 
   async function handleClaim() {
     if (!token || !info) return;
+    setIsClaimComplete(false);
+    setPendingResult(null);
     setClaimStatus({ kind: "claiming" });
+
     try {
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Not signed in");
 
-      const res = await fetch(`/api/claim/${token}`, {
+      const res = await fetch("/api/claim/" + token, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: "Bearer " + accessToken,
           "Content-Type": "application/json",
         },
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.error?.message ?? data?.message ?? `HTTP ${res.status}`);
+        throw new Error(
+          data?.error?.message ?? data?.message ?? "HTTP " + res.status,
+        );
       }
-      setClaimStatus({
-        kind: "success",
-        signatures: data.claimSignatures ?? [],
-      });
-      // Refetch info so the UI shows "claimed" status going forward
+
+      // SDK done. Stash the result and let ClaimProgress play "Done" before
+      // we flip to the success view.
+      setPendingResult({ signatures: data.claimSignatures ?? [] });
+      setIsClaimComplete(true);
       fetchClaimInfo();
     } catch (e) {
       setClaimStatus({
         kind: "error",
         message: e instanceof Error ? e.message : "Claim failed",
       });
+      setIsClaimComplete(false);
     }
+  }
+
+  function handleProgressComplete() {
+    if (!pendingResult) return;
+    setClaimStatus({ kind: "success", signatures: pendingResult.signatures });
   }
 
   // ── Loading ───────────────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-        <div className="text-sm text-zinc-500">Loading your claim...</div>
-      </main>
+      <ClaimShell>
+        <div className="text-sm text-muted">Loading your claim…</div>
+      </ClaimShell>
     );
   }
 
   // ── Invalid / not found ──────────────────────────────────────────
   if (error || !info) {
     return (
-      <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-        <div className="max-w-md w-full rounded-xl border border-zinc-200 bg-white p-8 text-center flex flex-col gap-3">
-          <h1 className="text-xl font-semibold text-zinc-900">
+      <ClaimShell>
+        <div className="w-full rounded-xl border border-border bg-card p-8 text-center flex flex-col gap-3 card-shadow">
+          <h1 className="text-xl font-semibold text-foreground">
             Claim link not found
           </h1>
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-muted">
             This link is invalid or may have been mistyped. Double-check the URL
             or ask the sender to resend.
           </p>
         </div>
-      </main>
+      </ClaimShell>
     );
   }
 
@@ -142,45 +163,46 @@ export default function ClaimPage() {
   const redacted = redactIdentifier(info.recipientIdentifier);
 
   // ── Already claimed ─────────────────────────────────────────────
-  if (info.status === "claimed" || info.claimedAt) {
+  if (
+    (info.status === "claimed" || info.claimedAt) &&
+    claimStatus.kind !== "success"
+  ) {
     return (
-      <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-        <div className="max-w-md w-full rounded-xl border border-zinc-200 bg-white p-8 text-center flex flex-col gap-3">
-          <h1 className="text-xl font-semibold text-zinc-900">
+      <ClaimShell>
+        <div className="w-full rounded-xl border border-border bg-card p-8 text-center flex flex-col gap-3 card-shadow">
+          <h1 className="text-xl font-semibold text-foreground">
             Already claimed
           </h1>
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-muted">
             The ${amount} USDC sent to {redacted} has already been claimed.
           </p>
         </div>
-      </main>
+      </ClaimShell>
     );
   }
 
   // ── Loading (Privy not ready) ────────────────────────────────────
   if (!ready) {
     return (
-      <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-        <div className="text-sm text-zinc-500">Loading...</div>
-      </main>
+      <ClaimShell>
+        <div className="text-sm text-muted">Loading…</div>
+      </ClaimShell>
     );
   }
 
   // ── Unauthenticated ──────────────────────────────────────────────
   if (!authenticated) {
     return (
-      <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-        <div className="max-w-md w-full flex flex-col items-center gap-6">
-          <div className="flex flex-col items-center gap-2 pt-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Payhaven
-            </div>
-            <h1 className="text-2xl font-semibold text-zinc-900 text-center">
+      <ClaimShell>
+        <div className="w-full flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-3 pt-4">
+            <Logo variant="lockup" size={32} />
+            <h1 className="text-2xl font-semibold text-foreground text-center pt-2">
               You have ${amount} USDC waiting
             </h1>
-            <p className="text-sm text-zinc-600 text-center max-w-sm">
+            <p className="text-sm text-muted text-center max-w-sm">
               Someone sent you money privately. Sign in to claim it into your
-              Payhaven account — yours to hold, send, or cash out.
+              Payhaven account, yours to hold, send, or cash out.
             </p>
           </div>
 
@@ -188,33 +210,31 @@ export default function ClaimPage() {
             <LoginButton />
           </div>
 
-          <div className="text-xs text-zinc-500 text-center max-w-sm pt-4 border-t border-zinc-200">
+          <div className="text-xs text-muted text-center max-w-sm pt-4 border-t border-border">
             Sign in with the email or phone this link was sent to ({redacted}).
-            Your Payhaven balance is private — only you can see it.
+            Your Payhaven balance is private, only you can see it.
           </div>
         </div>
-      </main>
+      </ClaimShell>
     );
   }
 
   // ── Authenticated but WRONG identity ─────────────────────────────
   if (!info.isAuthorizedRecipient) {
     return (
-      <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-        <div className="max-w-md w-full flex flex-col items-center gap-6">
-          <div className="flex flex-col items-center gap-2 pt-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Payhaven
-            </div>
-            <h1 className="text-2xl font-semibold text-zinc-900 text-center">
+      <ClaimShell>
+        <div className="w-full flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-3 pt-4">
+            <Logo variant="lockup" size={32} />
+            <h1 className="text-2xl font-semibold text-foreground text-center pt-2">
               Wrong account
             </h1>
-            <p className="text-sm text-zinc-600 text-center max-w-sm">
+            <p className="text-sm text-muted text-center max-w-sm">
               This claim is addressed to{" "}
-              <span className="font-medium text-zinc-900">{redacted}</span>.
+              <span className="font-medium text-foreground">{redacted}</span>.
               You&apos;re signed in with a different account.
             </p>
-            <p className="text-sm text-zinc-600 text-center max-w-sm pt-2">
+            <p className="text-sm text-muted text-center max-w-sm pt-2">
               Sign out and sign back in using the email or phone the sender
               addressed this to.
             </p>
@@ -222,108 +242,74 @@ export default function ClaimPage() {
 
           <button
             onClick={() => logout()}
-            className="w-full px-4 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800"
+            className="min-h-12 w-full px-4 bg-foreground text-background rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
           >
             Sign out
           </button>
         </div>
-      </main>
+      </ClaimShell>
     );
   }
 
-  // ── Authorized: ready to claim, claiming, success, error ─────────
+  // ── Authorized: idle / claiming / success / error ───────────────
   return (
-    <main className="flex flex-col flex-1 items-center justify-center p-6 min-h-screen bg-zinc-50">
-      <div className="max-w-md w-full flex flex-col items-center gap-6">
-        <div className="flex flex-col items-center gap-2 pt-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-            Payhaven
+    <ClaimShell>
+      <div className="w-full flex flex-col items-center gap-6">
+        {claimStatus.kind !== "success" && (
+          <div className="flex flex-col items-center gap-3 pt-4">
+            <Logo variant="lockup" size={32} />
+            <h1 className="text-2xl font-semibold text-foreground text-center pt-2">
+              Ready to claim ${amount} USDC
+            </h1>
+            <p className="text-sm text-muted text-center max-w-sm">
+              This will go privately into your Payhaven balance. Only you can
+              see it.
+            </p>
           </div>
-          <h1 className="text-2xl font-semibold text-zinc-900 text-center">
-            Ready to claim ${amount} USDC
-          </h1>
-          <p className="text-sm text-zinc-600 text-center max-w-sm">
-            This will go privately into your Payhaven balance. Only you can see
-            it.
-          </p>
-        </div>
+        )}
 
         {claimStatus.kind === "idle" && (
           <button
             onClick={handleClaim}
-            className="w-full px-4 py-3 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800"
+            className="min-h-12 w-full px-4 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-dark transition-colors brand-glow active:scale-[0.98]"
           >
             Claim ${amount}
           </button>
         )}
 
         {claimStatus.kind === "claiming" && (
-          <div className="w-full flex flex-col items-center gap-3 p-4 bg-white border border-zinc-200 rounded-lg">
-            <div className="flex items-center gap-2 text-sm text-zinc-700">
-              <Spinner />
-              <span>Generating proof and claiming...</span>
-            </div>
-            <div className="text-xs text-zinc-500 text-center">
-              This takes 5–15 seconds. The proof keeps your claim private — even
-              we can&apos;t see which UTXO you&apos;re claiming.
+          <div className="w-full p-5 bg-card border border-border rounded-xl card-shadow">
+            <ClaimProgress
+              isComplete={isClaimComplete}
+              onComplete={handleProgressComplete}
+            />
+            <div className="text-xs text-muted text-center pt-2">
+              The proof keeps your claim private, even we can&apos;t see which
+              UTXO you&apos;re claiming.
             </div>
           </div>
         )}
 
         {claimStatus.kind === "success" && (
-          <div className="w-full flex flex-col gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-sm font-medium text-green-900">
-              ✓ Claimed
-            </div>
-            <p className="text-sm text-green-800">
-              ${amount} USDC is now in your private Payhaven balance.
-            </p>
-            {claimStatus.signatures[0] && (
-              <a
-                href={`https://solscan.io/tx/${claimStatus.signatures[0]}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-green-700 font-mono underline truncate"
-              >
-                View on Solscan
-              </a>
-            )}
-          </div>
+          <ClaimSuccess
+            amount={amount}
+            txSignature={claimStatus.signatures[0]}
+          />
         )}
 
         {claimStatus.kind === "error" && (
-          <div className="w-full flex flex-col gap-2 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="text-sm font-medium text-red-900">
-              Claim failed
-            </div>
-            <div className="text-xs text-red-800">{claimStatus.message}</div>
+          <div className="w-full flex flex-col gap-2 p-4 bg-danger/10 border border-danger/30 rounded-md">
+            <div className="text-sm font-medium text-danger">Claim failed</div>
+            <div className="text-xs text-danger/80">{claimStatus.message}</div>
             <button
               onClick={() => setClaimStatus({ kind: "idle" })}
-              className="mt-2 text-xs font-medium text-red-900 underline self-start"
+              className="mt-2 text-xs font-medium text-danger underline self-start"
             >
               Try again
             </button>
           </div>
         )}
       </div>
-    </main>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      className="animate-spin"
-      aria-hidden="true"
-    >
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
+    </ClaimShell>
   );
 }

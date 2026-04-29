@@ -2,7 +2,7 @@
  * Environment variable loader + validator.
  *
  * Loaded once at startup. Anything that reads process.env directly elsewhere
- * is a bug — use the `env` export from this module instead.
+ * is a bug, use the `env` export from this module instead.
  *
  * This is the trust boundary for environment configuration
  * (see CONVENTIONS.md §2).
@@ -45,7 +45,7 @@ const envSchema = z.object({
 });
 
 // Parse once at module load. Throws a helpful error if anything is missing
-// or malformed — server won't start with broken config. That's intentional.
+// or malformed, server won't start with broken config. That's intentional.
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {

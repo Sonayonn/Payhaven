@@ -24,13 +24,13 @@ import { env } from "@/lib/env";
 import { log } from "@/lib/log";
 
 // Per CONVENTIONS.md:
-//   §4  — registration is a one-way door; never re-run on an already-
+//   §4 , registration is a one-way door; never re-run on an already-
 //         registered keypair. Our retry is safe because each call is
 //         idempotent at the step level, guarded by on-chain queries.
-//   §13 — Umbra SDK stage labels are misleading; don't use return values
+//   §13, Umbra SDK stage labels are misleading; don't use return values
 //         as ground truth. Use getUserAccountQuerierFunction to check
 //         actual on-chain state.
-//   §16 — register() returning signatures:[] means "nothing submitted
+//   §16, register() returning signatures:[] means "nothing submitted
 //         THIS CALL," NOT "fully registered." Confirmed by Umbra team
 //         on Day 8 Discord.
 //
@@ -48,10 +48,10 @@ export type RegisterWalletResult = {
   signatures: string[];
 };
 
-// Inlined account-state shape — the SDK's inferred type nests too deep
+// Inlined account-state shape, the SDK's inferred type nests too deep
 // for TS to unwrap cleanly, so we declare the fields we rely on and
 // `as QueryResult`-cast the query results. Matches the docs at
-// https://sdk.umbraprivacy.com/sdk/account-state — extra fields on the
+// https://sdk.umbraprivacy.com/sdk/account-state, extra fields on the
 // actual result are ignored, which is fine.
 type QueryResult =
   | { state: "non_existent" }
@@ -70,14 +70,14 @@ type QueryResult =
  * anonymous modes. Works identically for sender and recipient wallets.
  *
  * Correctness strategy (lessons from Day 8):
- *   1. Query on-chain state FIRST — if both X25519 and commitment flags
+ *   1. Query on-chain state FIRST, if both X25519 and commitment flags
  *      are already true, skip everything. Zero cost for repeat calls.
  *   2. If registration is incomplete, fund the wallet (idempotent —
  *      skipped if already above floor) then call register() once with
  *      both flags. The SDK sequences the 3 steps internally and is
  *      documented idempotent, so any steps already done are skipped.
  *   3. After each attempt, re-query on-chain. If the state flags are
- *      both true, done. If not, pause and try again — handles the
+ *      both true, done. If not, pause and try again, handles the
  *      mainnet confirmation-timeout case where step N landed but step
  *      N+1's confirmation wait fired prematurely.
  *   4. Give up with a real error if MAX_ATTEMPTS still leaves gaps.
@@ -100,7 +100,7 @@ export async function registerWalletIfNeeded(params: {
   const initialState = (await query(walletAddr)) as QueryResult;
 
   if (isFullyRegistered(initialState)) {
-    log.info("Wallet fully registered on-chain — skipping", {
+    log.info("Wallet fully registered on-chain, skipping", {
       address: params.address,
       isActiveForAnonymousUsage:
         initialState.state === "exists"
@@ -150,7 +150,7 @@ export async function registerWalletIfNeeded(params: {
       });
 
       // Only transaction-send / transaction-validate are expected retryable
-      // failures. Anything else is a real bug — throw so we see it.
+      // failures. Anything else is a real bug, throw so we see it.
       if (stage !== "transaction-send" && stage !== "transaction-validate") {
         throw err;
       }
@@ -221,7 +221,7 @@ function describeState(result: QueryResult): Record<string, unknown> {
  * floor. Used for registration gas and UTXO-creation rent headroom.
  *
  * Treasury's only on-chain role in Option B: gas sponsor for new
- * wallets. Never touches USDC — that lives in the user's wallet.
+ * wallets. Never touches USDC, that lives in the user's wallet.
  */
 async function fundWalletIfBelowFloor(
   target: ReturnType<typeof toAddress>,
@@ -233,7 +233,7 @@ async function fundWalletIfBelowFloor(
   const { value: balanceLamports } = await rpc.getBalance(target).send();
 
   if (balanceLamports >= FUNDING_FLOOR_LAMPORTS) {
-    log.info("Wallet already funded — skipping transfer", {
+    log.info("Wallet already funded, skipping transfer", {
       address: target,
       balanceLamports: balanceLamports.toString(),
     });

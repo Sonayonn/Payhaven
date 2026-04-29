@@ -8,7 +8,7 @@ import { log } from "@/lib/log";
 /**
  * Query a user's encrypted USDC balance.
  *
- * Returns the decrypted balance in base units (USDC has 6 decimals — 1 USDC = 1_000_000 base units).
+ * Returns the decrypted balance in base units (USDC has 6 decimals, 1 USDC = 1_000_000 base units).
  *
  * State semantics from Umbra docs:
  *   - "non_existent": user has never deposited; encrypted account doesn't exist yet
@@ -20,7 +20,7 @@ import { log } from "@/lib/log";
  * For Payhaven UX, anything that's not "shared" with a non-zero balance shows as $0.00.
  * The deposit/shield flow transitions: non_existent → shared.
  *
- * Read-only — no signing prompt, no transaction, ~500ms RPC roundtrip.
+ * Read-only, no signing prompt, no transaction, ~500ms RPC roundtrip.
  */
 export async function getEncryptedUsdcBalance(params: {
   walletId: string;

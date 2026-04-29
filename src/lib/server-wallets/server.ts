@@ -6,7 +6,7 @@ import { getSupabase } from "@/lib/supabase/server";
  *
  * One wallet per Privy user. Created on first login, reused forever.
  * The `umbra_registered_at` timestamp lets us skip Umbra registration on
- * subsequent operations — a non-null value means the wallet's X25519 key
+ * subsequent operations, a non-null value means the wallet's X25519 key
  * is on-chain and ready to receive or create UTXOs.
  */
 
@@ -65,6 +65,54 @@ export async function insertServerWallet(input: {
   if (error || !data) {
     throw new Error(
       `Failed to insert server_wallet: ${error?.message ?? "no data"}`,
+    );
+  }
+
+  return {
+    id: data.id as string,
+    privyUserId: data.privy_user_id as string,
+    walletId: data.wallet_id as string,
+    solanaAddress: data.solana_address as string,
+    umbraRegisteredAt: data.umbra_registered_at as string | null,
+    createdAt: data.created_at as string,
+  };
+}
+
+/**
+ * Adopt an existing wallet (created during recipient pregen) for a logged-in user.
+ *
+ * Called when a user logs in for the first time, has no row in server_wallets,
+ * but DOES have a wallet sitting in claim_tokens because someone has already
+ * sent them money. Without this path, we'd mint a brand-new wallet and the user
+ * would never see their claimed balance, that's the bug we just fixed.
+ *
+ * `umbraRegisteredAt` is preserved from the recipient pregen lifecycle: if the
+ * recipient wallet was already registered (it almost always is, since claiming
+ * requires registration), we mark it registered here too so doEnsureSenderWallet
+ * skips re-registration.
+ */
+export async function adoptExistingWalletForUser(input: {
+  privyUserId: string;
+  walletId: string;
+  solanaAddress: string;
+  umbraRegisteredAt: string | null;
+}): Promise<ServerWallet> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from("server_wallets")
+    .insert({
+      privy_user_id: input.privyUserId,
+      wallet_id: input.walletId,
+      solana_address: input.solanaAddress,
+      umbra_registered_at: input.umbraRegisteredAt,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(
+      `Failed to adopt existing wallet: ${error?.message ?? "no data"}`,
     );
   }
 

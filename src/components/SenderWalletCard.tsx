@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { getAccessToken } from "@privy-io/react-auth";
 import QRCode from "qrcode";
+import { useTheme } from "next-themes";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -22,14 +23,13 @@ type WalletInfo = {
 };
 
 export function SenderWalletCard() {
+  const { resolvedTheme } = useTheme();
   const [info, setInfo] = useState<WalletInfo | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Ref so the polling effect can reference the latest fetch without
-  // re-subscribing on every render.
   const fetchWalletRef = useRef<() => Promise<void>>(async () => {});
 
   const fetchWallet = useCallback(async () => {
@@ -53,14 +53,10 @@ export function SenderWalletCard() {
     }
   }, []);
 
-  // Keep the ref pointing at the latest callback.
   useEffect(() => {
     fetchWalletRef.current = fetchWallet;
   }, [fetchWallet]);
 
-  // Polling: only when the tab is visible. Also refetch immediately when
-  // the tab comes back into focus — typical pattern for "I was away, show
-  // me fresh data now."
   useEffect(() => {
     fetchWalletRef.current();
 
@@ -81,7 +77,7 @@ export function SenderWalletCard() {
 
     function onVisibilityChange() {
       if (document.visibilityState === "visible") {
-        fetchWalletRef.current(); // catch-up fetch on return
+        fetchWalletRef.current();
         startPolling();
       } else {
         stopPolling();
@@ -99,17 +95,22 @@ export function SenderWalletCard() {
     };
   }, []);
 
-  // Generate QR once we have an address
+  // Regenerate QR when address OR theme changes, QR contrast must
+  // match the surrounding card so it reads correctly in both modes.
   useEffect(() => {
     if (!info?.solanaAddress) return;
+    const isDark = resolvedTheme === "dark";
     QRCode.toDataURL(info.solanaAddress, {
       margin: 1,
       width: 200,
-      color: { dark: "#0f172a", light: "#ffffff" },
+      color: {
+        dark: isDark ? "#F9FAFB" : "#0F172A",   // foreground in current mode
+        light: isDark ? "#111827" : "#FFFFFF",  // card bg in current mode
+      },
     })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(null));
-  }, [info?.solanaAddress]);
+  }, [info?.solanaAddress, resolvedTheme]);
 
   async function copyAddress() {
     if (!info?.solanaAddress) return;
@@ -118,28 +119,28 @@ export function SenderWalletCard() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard API blocked — silently ignore. User can tap-hold to copy.
+      // Clipboard blocked, user can tap-hold to copy manually.
     }
   }
 
   if (loading) {
     return (
-      <div className="w-full rounded-xl border border-zinc-200 p-5 flex flex-col items-center justify-center min-h-[200px]">
-        <div className="text-sm text-zinc-500">Setting up your wallet...</div>
+      <div className="w-full rounded-xl border border-border p-5 flex flex-col items-center justify-center min-h-50">
+        <div className="text-sm text-muted">Setting up your wallet...</div>
       </div>
     );
   }
 
   if (error || !info) {
     return (
-      <div className="w-full rounded-xl border border-red-200 bg-red-50 p-5">
-        <div className="text-sm font-medium text-red-900">
+      <div className="w-full rounded-xl border border-danger/30 bg-danger/10 p-5">
+        <div className="text-sm font-medium text-danger">
           Couldn&apos;t load your wallet
         </div>
-        <div className="mt-1 text-xs text-red-700">{error}</div>
+        <div className="mt-1 text-xs text-danger/80">{error}</div>
         <button
           onClick={fetchWallet}
-          className="mt-3 text-xs font-medium text-red-900 underline"
+          className="mt-3 text-xs font-medium text-danger underline"
         >
           Retry
         </button>
@@ -151,34 +152,36 @@ export function SenderWalletCard() {
   const isEmpty = info.usdcBalanceBaseUnits === "0";
 
   return (
-    <div className="w-full rounded-xl border border-zinc-200 bg-white p-5 flex flex-col gap-4">
+    <div className="w-full rounded-xl border border-border bg-card p-5 flex flex-col gap-4 card-shadow">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <span className="text-xs font-medium uppercase tracking-wide text-faint">
           Your Payhaven balance
         </span>
         <button
           onClick={fetchWallet}
-          className="text-xs text-zinc-500 underline"
+          className="text-xs text-muted hover:text-foreground underline transition-colors"
           aria-label="Refresh balance"
         >
           Refresh
         </button>
       </div>
 
-      <div className="flex items-baseline gap-1">
-        <span className="text-3xl font-semibold text-zinc-900">${balance}</span>
-        <span className="text-sm text-zinc-500">USDC</span>
+      <div className="flex items-baseline gap-1.5">
+        <span className="balance-number text-4xl font-semibold text-foreground">
+          ${balance}
+        </span>
+        <span className="text-sm text-muted">USDC</span>
       </div>
 
       {isEmpty && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+        <div className="rounded-md bg-warning/10 border border-warning/30 p-3 text-xs text-warning">
           Fund this wallet from Phantom, Solflare, or an exchange to start
           sending.
         </div>
       )}
 
-      <div className="flex flex-col items-center gap-3 pt-2 border-t border-zinc-100">
-        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 self-start">
+      <div className="flex flex-col items-center gap-3 pt-3 border-t border-border">
+        <span className="text-xs font-medium uppercase tracking-wide text-faint self-start">
           Your Payhaven wallet address
         </span>
 
@@ -186,16 +189,16 @@ export function SenderWalletCard() {
           <img
             src={qrDataUrl}
             alt="Wallet address QR code"
-            className="h-[180px] w-[180px] rounded-md border border-zinc-100"
+            className="h-45 w-45 rounded-md border border-border"
           />
         )}
 
         <button
           onClick={copyAddress}
-          className="w-full rounded-lg bg-zinc-100 hover:bg-zinc-200 active:bg-zinc-300 transition-colors px-3 py-2.5 text-xs font-mono text-zinc-900 flex items-center justify-between gap-2"
+          className="w-full rounded-md bg-subtle hover:bg-border active:opacity-80 transition-all px-3 py-2.5 text-xs font-mono text-foreground flex items-center justify-between gap-2"
         >
           <span className="truncate">{truncateAddress(info.solanaAddress)}</span>
-          <span className="text-[11px] font-sans font-medium text-zinc-600 shrink-0">
+          <span className="text-[11px] font-sans font-medium text-muted shrink-0">
             {copied ? "Copied!" : "Tap to copy"}
           </span>
         </button>

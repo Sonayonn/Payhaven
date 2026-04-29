@@ -3,7 +3,7 @@
  *
  * Single source of truth for mint addresses, RPC endpoints, and Umbra
  * infrastructure URLs. Any file that reaches for a magic string like
- * "EPjFWdd5..." is a bug — import from here instead.
+ * "EPjFWdd5..." is a bug, import from here instead.
  */
 
 import { address } from "@solana/kit";
@@ -14,7 +14,7 @@ export const USDC_MAINNET_MINT = address(
 );
 
 // Umbra infrastructure endpoints. These should match what worked in the
-// Day 1 scratch repo — see CONVENTIONS.md §1 for the doc-drift note on
+// Day 1 scratch repo, see CONVENTIONS.md §1 for the doc-drift note on
 // which URL is correct vs. which the docs name.
 export const UMBRA_INDEXER = "https://utxo-indexer.api.umbraprivacy.com";
 export const UMBRA_RELAYER = "https://relayer.api.umbraprivacy.com";

@@ -15,12 +15,12 @@ import { log } from "@/lib/log";
  * Claim a receiver-claimable UTXO into the recipient's encrypted balance.
  *
  * Per CONVENTIONS.md:
- *   §1 drift #2 — docs say claimer deps are {zkProver, relayer}; real SDK also needs
+ *   §1 drift #2, docs say claimer deps are {zkProver, relayer}; real SDK also needs
  *                 fetchBatchMerkleProof from getBatchMerkleProofFetcher.
- *   §1 drift #4 — docs examples use ClaimableUtxoData[]; real function takes whatever
+ *   §1 drift #4, docs examples use ClaimableUtxoData[]; real function takes whatever
  *                 the scanner returns. Pass scan result directly without transformation.
- *   §13         — transaction-send errors can mean "landed but timed out." Don't
- *                 auto-retry — the nullifier may already be burned.
+ *   §13        , transaction-send errors can mean "landed but timed out." Don't
+ *                 auto-retry, the nullifier may already be burned.
  */
 
 export type ClaimUtxoResult = {
@@ -56,7 +56,7 @@ export async function claimReceiverUtxo(params: {
 
    let scanResult;
    try {
-  // Pass branded types per CONVENTIONS §1 drift #9 — U32 lives at the
+  // Pass branded types per CONVENTIONS §1 drift #9, U32 lives at the
   // /types subpath, not the root. The SDK does internal BigInt math on
   // these args, so a plain `number` cast via `as any` triggers
   // "Cannot mix BigInt" downstream. Brand explicitly here.
@@ -74,12 +74,19 @@ export async function claimReceiverUtxo(params: {
       throw scanErr;
     }
 
-    const receiverUtxos = scanResult.publicReceived ?? [];
+    // Encrypted-origin sends produce UTXOs in `received` (encrypted, recipient
+    // decrypts with their view key). Public-origin sends produce UTXOs in
+    // `publicReceived`. Since /api/send was upgraded in Step 3 to send from
+    // the sender's encrypted balance, all new UTXOs land in `received`.
+    // Concatenate both so this wrapper handles legacy public sends too.
+    const encryptedReceived = scanResult.received ?? [];
+    const publicReceived = scanResult.publicReceived ?? [];
+    const receiverUtxos = [...encryptedReceived, ...publicReceived];
 
     log.info("Scan complete", {
       recipientAddress: params.recipientAddress,
-      received: scanResult.received?.length ?? 0,
-      publicReceived: receiverUtxos.length,
+      received: encryptedReceived.length,
+      publicReceived: publicReceived.length,
       selfBurnable: scanResult.selfBurnable?.length ?? 0,
       publicSelfBurnable: scanResult.publicSelfBurnable?.length ?? 0,
     });
@@ -92,7 +99,7 @@ export async function claimReceiverUtxo(params: {
     }
 
     if (receiverUtxos.length > 1) {
-      log.warn("Multiple unclaimed UTXOs for this recipient — claiming all", {
+      log.warn("Multiple unclaimed UTXOs for this recipient, claiming all", {
         recipientAddress: params.recipientAddress,
         count: receiverUtxos.length,
       });
@@ -162,9 +169,9 @@ export async function claimReceiverUtxo(params: {
     } catch (err) {
       const stage = (err as { stage?: string } | null)?.stage;
 
-      // Full diagnostic — stack trace pinpoints which SDK function threw,
+      // Full diagnostic, stack trace pinpoints which SDK function threw,
       // crucial for narrowing the bigint-mixing source if it recurs.
-      log.error("Claim failed — full diagnostic", {
+      log.error("Claim failed, full diagnostic", {
         recipientAddress: params.recipientAddress,
         stage,
         message: err instanceof Error ? err.message : String(err),
@@ -172,7 +179,7 @@ export async function claimReceiverUtxo(params: {
       });
 
       if (stage === "transaction-validate" && attempt < MAX_STALE_PROOF_RETRIES) {
-        log.warn("Claim failed with stale Merkle proof — rescanning and retrying", {
+        log.warn("Claim failed with stale Merkle proof, rescanning and retrying", {
           recipientAddress: params.recipientAddress,
           stage,
         });

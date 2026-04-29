@@ -1,5 +1,5 @@
 /**
- * Money — unit conversion for token amounts at trust boundaries.
+ * Money, unit conversion for token amounts at trust boundaries.
  *
  * USDC has 6 decimals: 1 USDC = 1_000_000 base units (on-chain representation).
  *
@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 
-// USDC (mainnet) decimal precision — token's on-chain decimals field.
+// USDC (mainnet) decimal precision, token's on-chain decimals field.
 const USDC_DECIMALS = 6;
 
 // Solana's SPL token amounts are u64. U64_MAX = 2^64 - 1.
@@ -19,7 +19,7 @@ const U64_MAX = 18_446_744_073_709_551_615n;
 
 // Reasonable upper bound for a single remittance: $1,000,000. Rejects obvious
 // mistakes (fat-finger an extra zero, pass a wrong unit) without restricting
-// real-world use cases. Not a limit on Payhaven's product scope — a tripwire.
+// real-world use cases. Not a limit on Payhaven's product scope, a tripwire.
 const MAX_HUMAN_USDC = 1_000_000;
 
 /**
@@ -63,7 +63,7 @@ export function usdcToBaseUnits(humanAmount: number): UsdcBaseUnits {
   const [whole = "0", fraction = ""] = fixed.split(".");
   const combined = whole + fraction.padEnd(USDC_DECIMALS, "0");
 
-  // Strip leading zeros (BigInt accepts them, but it's good hygiene) — but keep
+  // Strip leading zeros (BigInt accepts them, but it's good hygiene), but keep
   // at least one digit so "0" doesn't become "".
   const normalized = combined.replace(/^0+(?=\d)/, "");
 

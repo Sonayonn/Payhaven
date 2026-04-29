@@ -5,7 +5,7 @@ import { useState } from "react";
 type ShareClaimLinkProps = {
   claimUrl: string;
   amountUsdc: number;
-  /** Email or phone the claim was addressed to — for the prefilled message. */
+  /** Email or phone the claim was addressed to, for the prefilled message. */
   recipientIdentifier: string;
   recipientKind: "email" | "phone";
   onDone?: () => void;
@@ -18,13 +18,14 @@ function formatUsdc(n: number): string {
 /**
  * Build a friendly message to prefill in WhatsApp / SMS.
  * Short, informal, recognizable as a personal message rather than a
- * notification — which matters for Nigerian family dynamics where an
+ * notification, which matters for Nigerian family dynamics where an
  * automated-looking link is easily dismissed as spam.
  */
 function buildShareMessage(claimUrl: string, amount: number): string {
   return (
-    `I sent you $${formatUsdc(amount)} USDC on Payhaven — private and secure. ` +
-    `Claim it here: ${claimUrl}`
+    "I sent you $" + formatUsdc(amount) + " USDC privately on Payhaven. " +
+    "Claim it here: " + claimUrl + ". " +
+    "(Stays private, no one but you can see the amount.)"
   );
 }
 
@@ -41,11 +42,11 @@ export function ShareClaimLink(props: ShareClaimLinkProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard blocked — user can still tap-hold to copy manually.
+      // Clipboard blocked, user can still tap-hold to copy manually.
     }
   }
 
-  // WhatsApp deep link — works on mobile (opens the app) and desktop
+  // WhatsApp deep link, works on mobile (opens the app) and desktop
   // (opens web.whatsapp.com). Phone-specific variant prefills the "to" number.
   const whatsappHref =
     recipientKind === "phone"
@@ -74,7 +75,7 @@ export function ShareClaimLink(props: ShareClaimLinkProps) {
         url: claimUrl,
       });
     } catch {
-      // User canceled share sheet — silent.
+      // User canceled share sheet, silent.
     }
   }
 
@@ -96,32 +97,20 @@ export function ShareClaimLink(props: ShareClaimLinkProps) {
         </div>
       </div>
 
-      {/* Link preview — tap to copy */}
-      <button
-        type="button"
-        onClick={copyLink}
-        className="w-full rounded-lg bg-white border border-zinc-200 hover:border-zinc-300 px-3 py-2.5 text-xs font-mono text-zinc-700 flex items-center justify-between gap-2 active:bg-zinc-50"
-      >
-        <span className="truncate">{claimUrl}</span>
-        <span className="text-[11px] font-sans font-medium text-zinc-600 shrink-0">
-          {copied ? "Copied!" : "Tap to copy"}
-        </span>
-      </button>
-
-      {/* Share options */}
+      {/* Share options, WhatsApp prominent, smaller actions below */}
       <div className="flex flex-col gap-2">
         <a
           href={whatsappHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-3 text-sm font-medium transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 min-h-14 text-base font-semibold transition-colors active:scale-[0.98]"
         >
           <WhatsAppIcon />
           Share via WhatsApp
         </a>
         <a
           href={smsHref}
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-3 text-sm font-medium transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-3 text-sm font-medium transition-colors active:scale-[0.98]"
         >
           <SmsIcon />
           Share via SMS
@@ -131,7 +120,7 @@ export function ShareClaimLink(props: ShareClaimLinkProps) {
           <button
             type="button"
             onClick={webShare}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-900 px-4 py-3 text-sm font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-900 px-4 py-3 text-sm font-medium transition-colors active:scale-[0.98]"
           >
             More share options
           </button>
@@ -140,11 +129,20 @@ export function ShareClaimLink(props: ShareClaimLinkProps) {
         {!hasWebShare && (
           <a
             href={mailHref}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-900 px-4 py-3 text-sm font-medium transition-colors"
-          > 
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-900 px-4 py-3 text-sm font-medium transition-colors active:scale-[0.98]"
+          >
             Share via email
           </a>
         )}
+
+        {/* Copy link as smaller secondary action below */}
+        <button
+          type="button"
+          onClick={copyLink}
+          className="self-center text-xs text-zinc-600 hover:text-zinc-900 underline pt-1 transition-colors"
+        >
+          {copied ? "Copied!" : "Copy link"}
+        </button>
       </div>
 
       {onDone && (
@@ -153,14 +151,14 @@ export function ShareClaimLink(props: ShareClaimLinkProps) {
           onClick={onDone}
           className="text-xs text-zinc-500 underline pt-1 self-center"
         >
-          Done — send another
+          Done, send another
         </button>
       )}
     </div>
   );
 }
 
-// ── Inline SVG icons — avoids an icon-library dep for two icons ───────────
+// ── Inline SVG icons, avoids an icon-library dep for two icons ───────────
 
 function WhatsAppIcon() {
   return (

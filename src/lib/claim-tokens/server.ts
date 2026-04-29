@@ -13,7 +13,7 @@ function generateToken(): string {
 export type ClaimTokenInput = {
   recipientIdentifier: string; // phone or email
   recipientAddress: string; // pregenerated Solana address
-  recipientWalletId: string; // Privy walletId — needed at claim time for server-side signing
+  recipientWalletId: string; // Privy walletId, needed at claim time for server-side signing
   amountUsdcBaseUnits: bigint;
   createUtxoSignature: string;
   senderPrivyUserId: string;
@@ -120,7 +120,7 @@ export async function findExistingRecipientWallet(
  *  - Backend-only fields used by /api/claim (recipientAddress, recipientWalletId)
  *
  * The route layer is responsible for not leaking the backend-only fields
- * to unauthenticated requests — see /api/claim-info/[token]/route.ts which
+ * to unauthenticated requests, see /api/claim-info/[token]/route.ts which
  * deliberately does not include them in its Response.json.
  *
  * Returns null when the token doesn't exist.
@@ -171,7 +171,7 @@ export async function findClaimTokenByToken(
   };
 }
 /**
- * Mark a claim token as successfully claimed. Idempotent — if already claimed,
+ * Mark a claim token as successfully claimed. Idempotent, if already claimed,
  * does not error (returns the existing claimed_tx_signature instead).
  *
  * Called after /api/claim successfully submits to the relayer. The on-chain

@@ -1,4 +1,4 @@
-# Payhaven — Conventions
+# Payhaven, Conventions
 
 Rules we've decided to follow on this project, and the hard-won context behind why. Read before touching anything SDK-adjacent.
 
@@ -36,7 +36,7 @@ grep -A 20 "^interface ClaimableUtxoData" node_modules/@umbra-privacy/sdk/dist/*
 | 5 | `getUserRegistrationFunction` takes no deps | Needs `{ zkProver: getUserRegistrationProver() }` when `anonymous: true` |
 | 6 | Prover is `getPublicBalanceToReceiverClaimableUtxoCreatorProver` | Actual export: `getCreateReceiverClaimableUtxoFromPublicBalanceProver` |
 | 7 | UTXO ordering field is `leafIndex` | Scan-stage `DecryptedUtxoData` has `insertionIndex`; `leafIndex` only exists on claim-stage `ClaimableUtxoData` |
-| 8 | Indexer URL varies by page — `indexer.api.umbraprivacy.com` vs `utxo-indexer.api.umbraprivacy.com` | Use `utxo-indexer.api.umbraprivacy.com` (confirmed working) |
+| 8 | Indexer URL varies by page, `indexer.api.umbraprivacy.com` vs `utxo-indexer.api.umbraprivacy.com` | Use `utxo-indexer.api.umbraprivacy.com` (confirmed working) |
 | 9 | `U32`, `U64`, `Address` importable from root | Only exported from `@umbra-privacy/sdk/types` |
 
 When you find new drift, add it here.
@@ -71,7 +71,7 @@ export function usdcToBaseUnits(humanAmount: number): U64
 export function baseUnitsToUsdc(base: U64): number
 ```
 
-Both Zod-validated. Both tested. Called exactly once at each boundary — never let a `bigint` cross a boundary without being sure whose decimals it's in. This saves six hours of Sprint 3 confusion when a claim silently shows up as $0.0002 USDC.
+Both Zod-validated. Both tested. Called exactly once at each boundary, never let a `bigint` cross a boundary without being sure whose decimals it's in. This saves six hours of Sprint 3 confusion when a claim silently shows up as $0.0002 USDC.
 
 ---
 
@@ -79,7 +79,7 @@ Both Zod-validated. Both tested. Called exactly once at each boundary — never 
 
 **Rule:** Before writing any Umbra call, state out loud (in a code comment) which primitive it uses and why.
 
-### The four UTXO creators — pick by funding source × recipient
+### The four UTXO creators, pick by funding source × recipient
 
 | Funding | Recipient | Function |
 |---|---|---|
@@ -94,16 +94,16 @@ Each one requires a matching ZK prover from `@umbra-privacy/web-zk-prover`. The 
 
 `getClaimableUtxoScannerFunction` returns four buckets. The bucket is determined by (funding source × who created the UTXO):
 
-- `received` — UTXOs someone sent you, funded from their encrypted balance
-- `publicReceived` — UTXOs someone sent you, funded from their public ATA ← **Payhaven recipients get these**
-- `selfBurnable` — UTXOs you created for yourself, from your encrypted balance
-- `publicSelfBurnable` — UTXOs you created for yourself, from your public ATA
+- `received`, UTXOs someone sent you, funded from their encrypted balance
+- `publicReceived`, UTXOs someone sent you, funded from their public ATA ← **Payhaven recipients get these**
+- `selfBurnable`, UTXOs you created for yourself, from your encrypted balance
+- `publicSelfBurnable`, UTXOs you created for yourself, from your public ATA
 
-The "public" prefix refers to **funding source only**, not privacy properties. All four buckets are cryptographically identical once committed — they're in the same Merkle tree, claimed with the same ZK circuit, break the same on-chain sender-receiver link. The split is scanner metadata, not a privacy distinction.
+The "public" prefix refers to **funding source only**, not privacy properties. All four buckets are cryptographically identical once committed, they're in the same Merkle tree, claimed with the same ZK circuit, break the same on-chain sender-receiver link. The split is scanner metadata, not a privacy distinction.
 
 ### The single receiver-claimable claimer
 
-There is exactly one claim function for UTXOs sent to you — `getReceiverClaimableUtxoToEncryptedBalanceClaimerFunction`. It handles both `received` and `publicReceived`. Don't look for a "public" variant; none exists.
+There is exactly one claim function for UTXOs sent to you, `getReceiverClaimableUtxoToEncryptedBalanceClaimerFunction`. It handles both `received` and `publicReceived`. Don't look for a "public" variant; none exists.
 
 **Required deps:**
 ```ts
@@ -124,9 +124,9 @@ All three are required. Docs show only two.
 
 **Why:** Registration rotates keys. Any UTXOs previously addressed to the old keys become unclaimable. On Day 1 we locked this behind a `REGISTER=true` env flag and documented the warning. Keep that pattern.
 
-**Cost:** ~0.01–0.02 SOL per account (roughly $1-2 at current prices). 3 transactions per account. The SDK's relayer does **not** pay for registration — the keypair must already hold SOL.
+**Cost:** ~0.01–0.02 SOL per account (roughly $1-2 at current prices). 3 transactions per account. The SDK's relayer does **not** pay for registration, the keypair must already hold SOL.
 
-**Implication for product:** recipients can't claim their first UTXO unless they have SOL. The treasury is responsible for airdropping dust SOL (~0.02) to a recipient's wallet right before their first claim. Bake this into the send flow, not the claim flow — the claim function from the SDK assumes registration is done.
+**Implication for product:** recipients can't claim their first UTXO unless they have SOL. The treasury is responsible for airdropping dust SOL (~0.02) to a recipient's wallet right before their first claim. Bake this into the send flow, not the claim flow, the claim function from the SDK assumes registration is done.
 
 ---
 
@@ -155,7 +155,7 @@ Day 1 research confirmed:
 Still to verify on Day 3 with actual code:
 1. React SDK vs Expo SDK shape differences
 2. `signMessage` signature encoding (base64 string vs raw `Uint8Array`)
-3. UX of the master-seed prompt — should fire exactly once at onboarding, not per-send
+3. UX of the master-seed prompt, should fire exactly once at onboarding, not per-send
 
 If Privy turns out to need a thin adapter shim, we write a 30-line wrapper. If Privy is fundamentally incompatible (not expected), Dynamic or Web3Auth are fallbacks.
 
@@ -165,7 +165,7 @@ If Privy turns out to need a thin adapter shim, we write a 30-line wrapper. If P
 
 - **Chain:** Solana **mainnet**, not devnet. Confirmed by Umbra: devnet only has WSOL pools. USDC pools only exist on mainnet.
 - **RPC:** Helius free tier for development. Public `api.mainnet-beta.solana.com` works but is rate-limited and laggy. Both in `.env`, Helius enabled.
-- **Relayer:** Umbra's public relayer at `relayer.api.umbraprivacy.com`. Rate limits are fine for hackathon judging (confirmed with Umbra team). For production scale, the SDK's relayer is pluggable — we'd self-host using `getEncryptedBalanceClaimRelayerForwarderFunction`.
+- **Relayer:** Umbra's public relayer at `relayer.api.umbraprivacy.com`. Rate limits are fine for hackathon judging (confirmed with Umbra team). For production scale, the SDK's relayer is pluggable, we'd self-host using `getEncryptedBalanceClaimRelayerForwarderFunction`.
 - **Indexer:** `utxo-indexer.api.umbraprivacy.com` (not `indexer.api...`).
 
 ---
@@ -187,19 +187,19 @@ cat .env | sed 's/api-key=\([a-z0-9]\{4\}\).*/api-key=\1...REDACTED/'
 
 ---
 
-## 9. Known issues — resolved and outstanding
+## 9. Known issues, resolved and outstanding
 
 ### Resolved
 
-**`TimestampDifferenceExceedsMaximum` (Umbra error 14008) on claim** — RESOLVED.
+**`TimestampDifferenceExceedsMaximum` (Umbra error 14008) on claim**, RESOLVED.
 
 Symptom: on-chain Umbra program rejected claims with `Error Code: TimestampDifferenceExceedsMaximum. Error Number: 14008` thrown from `programs/umbra/src/instructions/claim/to_encrypted_token_account/new_token_shared.rs:853`. Failed twice with two different RPC providers (public mainnet + Helius free tier).
 
 Cause: home network was high-latency / unstable, stretching the proof-submission round-trip past Umbra's freshness window. Umbra confirmed the window is **5 minutes** of allowed drift between proof generation and on-chain submission. A saturated or lossy connection can stretch the round-trip past that limit even when the local clock is perfectly NTP-synced.
 
-Fix: operational, not code. Submission must happen from a stable network. No SDK or protocol changes needed. Verified working on Starlink — claim succeeded first retry, request ID `bbc366a6-dd94-47d5-bc3c-9d972333b857`, on-chain tx `HEobMLgLPu1ZrbiH65hc7D7XHGS5Ch7PX4fC3NwB8kJKufMjDGV3BerFrgpXcCz6meMEYyEYpUjFYCcG6AV9bNd`.
+Fix: operational, not code. Submission must happen from a stable network. No SDK or protocol changes needed. Verified working on Starlink, claim succeeded first retry, request ID `bbc366a6-dd94-47d5-bc3c-9d972333b857`, on-chain tx `HEobMLgLPu1ZrbiH65hc7D7XHGS5Ch7PX4fC3NwB8kJKufMjDGV3BerFrgpXcCz6meMEYyEYpUjFYCcG6AV9bNd`.
 
-**Implication for Payhaven:** the sender device's network quality directly affects whether their UTXO creation succeeds. For production, this means the Privy-embedded wallet does proof generation in the user's browser — a user on shaky mobile data could hit this. Two mitigations to keep in mind:
+**Implication for Payhaven:** the sender device's network quality directly affects whether their UTXO creation succeeds. For production, this means the Privy-embedded wallet does proof generation in the user's browser, a user on shaky mobile data could hit this. Two mitigations to keep in mind:
 
 - For the hackathon demo: record from a known-stable network (Starlink, fiber, etc.). Don't demo from a coffee shop.
 - For production: surface a clear "submission failed, please retry on a better connection" error rather than the cryptic on-chain error code. Wrap the Umbra error in a user-friendly message.
@@ -231,11 +231,11 @@ Reference tx signatures kept as proof points: see section 9 above.
 
 A few things from Day 1 that aren't rules but should shape how we work in Sprint 1+:
 
-**The user knows the dev environment better than the assistant.** When the human says *"I just changed X, let's see if Y works,"* that's a data point worth taking seriously — not impulse to dismiss. On Day 1, switching ISPs to Starlink fixed the claim error after I'd argued (confidently and incorrectly) that home network couldn't be the cause. The correct response to "let's just try it" on a $0 test is *"sure, go,"* not *"my hypothesis says no."*
+**The user knows the dev environment better than the assistant.** When the human says *"I just changed X, let's see if Y works,"* that's a data point worth taking seriously, not impulse to dismiss. On Day 1, switching ISPs to Starlink fixed the claim error after I'd argued (confidently and incorrectly) that home network couldn't be the cause. The correct response to "let's just try it" on a $0 test is *"sure, go,"* not *"my hypothesis says no."*
 
-**Confidence calibration matters as much as accuracy.** A wrong confident answer wastes more time than a right cautious one, because it makes the human stop questioning. When ruling out hypotheses, label them as "ruled out" only when there's actual evidence — not when they "shouldn't" matter on theoretical grounds.
+**Confidence calibration matters as much as accuracy.** A wrong confident answer wastes more time than a right cautious one, because it makes the human stop questioning. When ruling out hypotheses, label them as "ruled out" only when there's actual evidence, not when they "shouldn't" matter on theoretical grounds.
 
-**The last mile is where the undocumented behavior lives.** Registration, creation, scanning — all worked with minor doc drift. The claim — the one step where the on-chain program runs protocol-level checks against our submission — is where the surprise lived. Bake this into Sprint 2-3 schedules: budget extra time for the *final* step of any new flow, not the first.
+**The last mile is where the undocumented behavior lives.** Registration, creation, scanning, all worked with minor doc drift. The claim, the one step where the on-chain program runs protocol-level checks against our submission, is where the surprise lived. Bake this into Sprint 2-3 schedules: budget extra time for the *final* step of any new flow, not the first.
 
 **Network quality is a variable, not a constant.** "It worked on my machine" hides ISP-level effects. For anything time-sensitive (proofs, blockhashes, signed transactions with TTLs), assume the user might be on a degraded network and design the error path accordingly.
 
@@ -245,9 +245,9 @@ A few things from Day 1 that aren't rules but should shape how we work in Sprint
 
 **Rule:** Server-owned wallets created via `privy.walletApi.createWallet({ ownerId })` use a different signing path than user-owned wallets. Our adapter in `src/lib/umbra/privy-signer.ts` handles both, but the key detail is that these wallets must be created with `ownerId` set to `env.PRIVY_AUTHORIZATION_PUBLIC_KEY` or the server cannot sign for them.
 
-**Why:** `privy.walletApi.signMessage` and `signTransaction` verify the signing request against the wallet's `ownerId`. Default-owned wallets fail with `"No valid authorization keys or user signing keys available"`. Wallets owned by our auth key let the server sign independently, without user approval — which is what makes pre-registration and pre-send flows possible.
+**Why:** `privy.walletApi.signMessage` and `signTransaction` verify the signing request against the wallet's `ownerId`. Default-owned wallets fail with `"No valid authorization keys or user signing keys available"`. Wallets owned by our auth key let the server sign independently, without user approval, which is what makes pre-registration and pre-send flows possible.
 
-**Known gotcha:** `privy.importUser({ createSolanaWallet: true })` does NOT accept an `ownerId` parameter. Wallets created through `importUser` default to user-owned. For server-controlled wallets, call `privy.walletApi.createWallet()` directly — don't try to combine user creation with wallet ownership in one call.
+**Known gotcha:** `privy.importUser({ createSolanaWallet: true })` does NOT accept an `ownerId` parameter. Wallets created through `importUser` default to user-owned. For server-controlled wallets, call `privy.walletApi.createWallet()` directly, don't try to combine user creation with wallet ownership in one call.
 
 ---
 
@@ -261,7 +261,7 @@ A few things from Day 1 that aren't rules but should shape how we work in Sprint
 - Confirmation timeout where all 3 registration txs actually landed on-chain → reports as `stage: "transaction-send"` with no signature, leading you to think the tx failed when it succeeded.
 - Pre-flight simulation failure due to insufficient funds → reports as `stage: "transaction-send"` sometimes, `stage: "transaction-validate"` other times.
 
-**Mitigation in our code:** `src/lib/umbra/wallet-registration.ts` handles both `transaction-send` and `transaction-validate` identically — fund if needed, retry once, lean on SDK idempotency. If the txs landed on first attempt, the retry returns `signatures: []` at zero cost.
+**Mitigation in our code:** `src/lib/umbra/wallet-registration.ts` handles both `transaction-send` and `transaction-validate` identically, fund if needed, retry once, lean on SDK idempotency. If the txs landed on first attempt, the retry returns `signatures: []` at zero cost.
 
 **Diagnostic when a registration "fails":** always check Solana Explorer for the wallet address. If you see 3 recent Umbra program transactions all green, the registration worked and the error was a confirmation timeout, not a real failure.
 
@@ -271,7 +271,7 @@ A few things from Day 1 that aren't rules but should shape how we work in Sprint
 
 **Rule:** Each Payhaven user gets exactly one Payhaven wallet, not one-per-send. Dedup is enforced at the application layer in Supabase, not at the Privy layer.
 
-**Why:** Privy's `walletApi.createWallet` has no built-in dedup — every call creates a new wallet. Relying on "Privy will give me the same wallet for the same user" doesn't work for server-owned wallets (it does for user-linked ones, but we don't use those). We dedup ourselves:
+**Why:** Privy's `walletApi.createWallet` has no built-in dedup, every call creates a new wallet. Relying on "Privy will give me the same wallet for the same user" doesn't work for server-owned wallets (it does for user-linked ones, but we don't use those). We dedup ourselves:
 
 - Sender wallets: keyed by `privy_user_id` in `server_wallets` table
 - Recipient wallets: keyed by `recipient_identifier` (phone/email) in `claim_tokens` table
@@ -292,7 +292,7 @@ Debug iteration costs real money. Typical cycle:
 
 A full end-to-end test on a brand-new sender+recipient pair costs ~0.025 SOL ≈ $3.75 at current prices. Budget accordingly.
 
-**Rule:** never iterate SDK shape questions on mainnet. Read the `.d.ts`, grep, print types — only run the tx when you're confident the call is correctly shaped.
+**Rule:** never iterate SDK shape questions on mainnet. Read the `.d.ts`, grep, print types, only run the tx when you're confident the call is correctly shaped.
 
 ## 16. Registration state must be verified on-chain, not from SDK return values
 

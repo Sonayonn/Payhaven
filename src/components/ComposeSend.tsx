@@ -2,32 +2,35 @@
 
 import { useState } from "react";
 import { sendUsdc, SendFailure } from "@/lib/api/client";
-import { ShareClaimLink } from "./ShareClaimLink";
+import { RecipientPreview } from "./RecipientPreview";
 
 type RecipientKind = "email" | "phone";
+
+export type SendResult = {
+  recipientIdentifier: string;
+  recipientKind: RecipientKind;
+  amountUsdc: number;
+  txSignature: string;
+  claimUrl: string;
+};
 
 type Status =
   | { kind: "idle" }
   | { kind: "sending" }
-  | {
-      kind: "success";
-      txSignature: string;
-      claimUrl: string;
-      amountUsdc: number;
-      recipientIdentifier: string;
-      recipientKind: RecipientKind;
-    }
+  | { kind: "success" }
   | { kind: "error"; code: string; message: string };
 
 type ComposeSendProps = {
-  onSuccess?: (record: {
-    recipientAddress: string;
-    amountUsdc: number;
-    txSignature: string;
-  }) => void;
+  onSendStart?: () => void;
+  onSuccess?: (result: SendResult) => void;
+  onSendError?: () => void;
 };
 
-export function ComposeSend({ onSuccess }: ComposeSendProps) {
+export function ComposeSend({
+  onSendStart,
+  onSuccess,
+  onSendError,
+}: ComposeSendProps) {
   const [recipientKind, setRecipientKind] = useState<RecipientKind>("email");
   const [recipientValue, setRecipientValue] = useState("");
   const [amount, setAmount] = useState("");
@@ -37,8 +40,7 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
     recipientValue === "" ||
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientValue);
   const phoneValid =
-    recipientValue === "" ||
-    /^\+?[\d\s\-()]{7,}$/.test(recipientValue);
+    recipientValue === "" || /^\+?[\d\s\-()]{7,}$/.test(recipientValue);
 
   const recipientValid =
     recipientKind === "email" ? emailValid : phoneValid;
@@ -54,30 +56,31 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
     amountValid &&
     status.kind !== "sending";
 
+  // Preview shows when the form is internally consistent, full identifier,
+  // valid format, positive amount. Drives the anti-typo guard from Step 13.
+  const showPreview =
+    canSubmit &&
+    recipientValue.length > 0 &&
+    amount.length > 0 &&
+    !isNaN(amountNumber);
+
   async function handleSend() {
     if (!canSubmit) return;
     setStatus({ kind: "sending" });
+    onSendStart?.();
     try {
       const result = await sendUsdc({
         recipient: { kind: recipientKind, value: recipientValue },
         amountUsdc: amountNumber,
       });
-      setStatus({
-        kind: "success",
-        txSignature: result.createUtxoSignature,
-        claimUrl: result.claimUrl,
-        amountUsdc: amountNumber,
+      setStatus({ kind: "success" });
+      onSuccess?.({
         recipientIdentifier: recipientValue,
         recipientKind,
-      });
-      onSuccess?.({
-        recipientAddress: recipientValue,
         amountUsdc: amountNumber,
         txSignature: result.createUtxoSignature,
+        claimUrl: result.claimUrl,
       });
-      // Note: we do NOT clear the form here anymore. The form is hidden
-      // while the success panel is showing. The user clicks "Send another"
-      // to reset.
     } catch (err) {
       if (err instanceof SendFailure) {
         setStatus({ kind: "error", code: err.code, message: err.message });
@@ -88,6 +91,7 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
           message: err instanceof Error ? err.message : "Something went wrong",
         });
       }
+      onSendError?.();
     }
   }
 
@@ -97,49 +101,15 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
     setRecipientValue("");
   }
 
-  function resetForm() {
-    setStatus({ kind: "idle" });
-    setRecipientValue("");
-    setAmount("");
-  }
-
   const isSending = status.kind === "sending";
 
-  // ── Success state: show ShareClaimLink, hide the compose form ──────────
-  if (status.kind === "success") {
-    return (
-      <div className="flex flex-col gap-4 w-full">
-        <h2 className="text-lg font-semibold">Send USDC</h2>
-
-        <ShareClaimLink
-          claimUrl={status.claimUrl}
-          amountUsdc={status.amountUsdc}
-          recipientIdentifier={status.recipientIdentifier}
-          recipientKind={status.recipientKind}
-          onDone={resetForm}
-        />
-
-        <a
-          href={`https://solscan.io/tx/${status.txSignature}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-zinc-500 hover:text-zinc-700 font-mono underline self-center truncate max-w-full"
-        >
-          View transaction on Solscan
-        </a>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-4 w-full">
-      <h2 className="text-lg font-semibold">Send USDC</h2>
-
+    <div className="flex flex-col gap-4 w-full pb-2">
       {/* Kind toggle */}
       <div
         role="tablist"
         aria-label="Recipient type"
-        className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 rounded-lg"
+        className="grid grid-cols-2 gap-1 p-1 bg-subtle rounded-md"
       >
         <button
           type="button"
@@ -149,8 +119,8 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
           disabled={isSending}
           className={`py-2 rounded-md text-sm font-medium transition-colors ${
             recipientKind === "email"
-              ? "bg-white text-zinc-900 shadow-sm"
-              : "text-zinc-600 hover:text-zinc-900"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted hover:text-foreground"
           } disabled:opacity-60`}
         >
           Email
@@ -163,8 +133,8 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
           disabled={isSending}
           className={`py-2 rounded-md text-sm font-medium transition-colors ${
             recipientKind === "phone"
-              ? "bg-white text-zinc-900 shadow-sm"
-              : "text-zinc-600 hover:text-zinc-900"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted hover:text-foreground"
           } disabled:opacity-60`}
         >
           Phone
@@ -173,7 +143,7 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
 
       {/* Recipient */}
       <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-700">
+        <span className="text-sm text-muted">
           {recipientKind === "email" ? "Recipient email" : "Recipient phone"}
         </span>
         <input
@@ -189,20 +159,20 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
               : "+234 812 345 6789"
           }
           autoComplete={recipientKind === "email" ? "email" : "tel"}
-          className="px-3 py-2 border rounded text-sm disabled:bg-zinc-100"
+          className="px-3 py-2.5 border border-border rounded-md text-base sm:text-sm bg-background text-foreground disabled:bg-subtle min-h-12"
         />
         {!recipientValid && (
-          <span className="text-xs text-red-600">
+          <span className="text-xs text-danger">
             {recipientKind === "email"
               ? "Enter a valid email address"
-              : "Enter a valid phone number — include country code (+234...)"}
+              : "Enter a valid phone number, include country code (+234…)"}
           </span>
         )}
       </label>
 
       {/* Amount */}
       <label className="flex flex-col gap-1">
-        <span className="text-sm text-zinc-700">Amount (USDC)</span>
+        <span className="text-sm text-muted">Amount (USDC)</span>
         <input
           type="number"
           inputMode="decimal"
@@ -212,38 +182,40 @@ export function ComposeSend({ onSuccess }: ComposeSendProps) {
           onChange={(e) => setAmount(e.target.value)}
           disabled={isSending}
           placeholder="0.10"
-          className="px-3 py-2 border rounded disabled:bg-zinc-100"
+          className="px-3 py-2.5 border border-border rounded-md text-base sm:text-sm bg-background text-foreground disabled:bg-subtle min-h-12"
         />
         {!amountValid && (
-          <span className="text-xs text-red-600">
+          <span className="text-xs text-danger">
             Amount must be a positive number
           </span>
         )}
       </label>
 
+      {/* Recipient preview, Step 13 anti-typo guard */}
+      {showPreview && (
+        <RecipientPreview
+          identifier={recipientValue}
+          kind={recipientKind}
+          amount={amountNumber}
+        />
+      )}
+
       <button
         onClick={handleSend}
         disabled={!canSubmit}
-        className="px-4 py-2 bg-zinc-900 text-white rounded disabled:bg-zinc-400 hover:bg-zinc-700"
+        className="min-h-12 px-4 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-dark disabled:bg-subtle disabled:text-faint disabled:cursor-not-allowed transition-colors brand-glow disabled:shadow-none active:scale-[0.98]"
       >
-        {isSending ? "Sending..." : "Send privately"}
+        {isSending ? "Sending…" : "Send privately"}
       </button>
 
-      {status.kind === "sending" && (
-        <div className="text-sm text-zinc-600">
-          Creating shielded deposit. This takes 15-30 seconds — please don&apos;t
-          close the tab.
-        </div>
-      )}
-
       {status.kind === "error" && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded flex flex-col gap-1">
-          <div className="text-sm font-medium text-red-900">
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-md flex flex-col gap-1">
+          <div className="text-sm font-medium text-danger">
             {status.code === "UPSTREAM_ERROR" && status.message.includes("fetch")
-              ? "Network error — please try again on a stable connection"
+              ? "Network error, please try again on a stable connection"
               : "Send failed"}
           </div>
-          <div className="text-xs text-red-800">{status.message}</div>
+          <div className="text-xs text-danger/80">{status.message}</div>
         </div>
       )}
     </div>

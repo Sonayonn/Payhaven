@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError } from "@/lib/api/errors";
 import { log } from "@/lib/log";
-import { verifyPrivyToken } from "@/lib/privy/server";
+import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
 import { ensureSenderWallet } from "@/lib/privy/sender-wallet";
 import { getEncryptedUsdcBalance } from "@/lib/umbra/encrypted-balance";
 
@@ -9,7 +9,7 @@ import { getEncryptedUsdcBalance } from "@/lib/umbra/encrypted-balance";
  * GET /api/encrypted-balance
  *
  * Returns the authenticated user's encrypted USDC balance.
- * Read-only — no on-chain mutation, no SOL spent.
+ * Read-only, no on-chain mutation, no SOL spent.
  *
  * Response shape:
  *   { ok: true, state: "shared" | "non_existent" | ..., balanceBaseUnits: "1234567" }
@@ -25,16 +25,21 @@ export async function GET(req: NextRequest) {
     return apiError("UNAUTHORIZED", "Missing Authorization header");
   }
 
-  let privyUserId: string;
+  let identity;
   try {
-    privyUserId = await verifyPrivyToken(token);
+    identity = await verifyPrivyTokenAndGetIdentifiers(token);
   } catch {
     return apiError("UNAUTHORIZED", "Invalid or expired token");
   }
 
   let wallet;
   try {
-    wallet = await ensureSenderWallet(privyUserId);
+    // Pass linked email/phone so first-login adoption can find a wallet
+    // pregenerated for this user before they ever signed up.
+    wallet = await ensureSenderWallet(identity.privyUserId, {
+      email: identity.email,
+      phone: identity.phone,
+    });
   } catch (err) {
     return apiError("UPSTREAM_ERROR", "Failed to resolve wallet", {
       logFields: { err: err instanceof Error ? err.message : String(err) },
