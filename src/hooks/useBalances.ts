@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { getAccessToken } from "@privy-io/react-auth";
+import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -15,25 +15,36 @@ export type EncryptedBalance = {
   balanceBaseUnits: string;
 };
 
+export type SolBalance = {
+  solDisplay: string;
+  operationsRemaining: number;
+  health: "healthy" | "low" | "empty";
+};
+
 type State = {
   wallet: WalletInfo | null;
   encrypted: EncryptedBalance | null;
+  sol: SolBalance | null;
   loading: boolean;
   error: string | null;
 };
 
 /**
- * Fetches public + encrypted balances together with visibility-aware polling.
- * Exposes refresh() so action handlers (shield/send/unshield/claim) can trigger
- * an immediate re-fetch after the on-chain mutation lands.
+ * Fetches public + encrypted + SOL gas balances together with visibility-aware
+ * polling. Exposes refresh() so action handlers (shield/send/unshield/claim)
+ * can trigger an immediate re-fetch after the on-chain mutation lands.
  *
- * Partial success is fine: encrypted-balance can fail without wiping public.
- * Public wallet failure surfaces as `error` because everything else depends on it.
+ * Partial success is the norm: encrypted-balance and SOL can each fail
+ * without wiping public balance. Public wallet failure surfaces as `error`
+ * because everything else depends on it.
  */
 export function useBalances() {
+  const { ready, authenticated } = usePrivy();
+
   const [state, setState] = useState<State>({
     wallet: null,
     encrypted: null,
+    sol: null,
     loading: true,
     error: null,
   });
@@ -47,11 +58,14 @@ export function useBalances() {
 
     const headers = { Authorization: `Bearer ${token}` };
 
-    const [walletResult, encResult] = await Promise.allSettled([
+    const [walletResult, encResult, solResult] = await Promise.allSettled([
       fetch("/api/sender-wallet", { headers }).then((r) =>
         r.json().then((b) => ({ ok: r.ok, body: b })),
       ),
       fetch("/api/encrypted-balance", { headers }).then((r) =>
+        r.json().then((b) => ({ ok: r.ok, body: b })),
+      ),
+      fetch("/api/sol-balance", { headers }).then((r) =>
         r.json().then((b) => ({ ok: r.ok, body: b })),
       ),
     ]);
@@ -92,7 +106,21 @@ export function useBalances() {
           balanceBaseUnits: encResult.value.body.balanceBaseUnits,
         };
       }
-      // Encrypted failures are silent, show last-known or null, no global error.
+      // Encrypted failures are silent — show last-known or null, no global error.
+
+      if (
+        solResult.status === "fulfilled" &&
+        solResult.value.ok &&
+        solResult.value.body.ok === true
+      ) {
+        next.sol = {
+          solDisplay: solResult.value.body.solDisplay,
+          operationsRemaining: solResult.value.body.operationsRemaining,
+          health: solResult.value.body.health,
+        };
+      }
+      // SOL failures are silent — gas pill just won't render.
+
       return next;
     });
   }, []);
@@ -104,6 +132,10 @@ export function useBalances() {
   }, [refresh]);
 
   useEffect(() => {
+    if (!ready || !authenticated) {
+      return;
+    }
+
     refreshRef.current();
 
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -137,7 +169,7 @@ export function useBalances() {
       stopPolling();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, []);
+  }, [ready, authenticated]);
 
   return { ...state, refresh };
 }

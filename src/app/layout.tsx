@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Payhaven, Private USDC remittance",
+  title: "Payhaven | Private USDC remittance",
   description:
     "Send money privately on Solana. End-to-end encrypted balances and transfers. Built for the Nigerian diaspora and beyond.",
   icons: {

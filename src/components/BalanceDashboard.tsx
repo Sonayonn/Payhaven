@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { useTheme } from "next-themes";
-import type { WalletInfo, EncryptedBalance } from "@/hooks/useBalances";
+import type { WalletInfo, EncryptedBalance, SolBalance } from "@/hooks/useBalances";
 import { NumberRoller } from "./NumberRoller";
 import { SendHistory } from "./SendHistory";
 import { PrivacyTimeline } from "./PrivacyTimeline";
@@ -24,6 +24,7 @@ function truncateAddress(addr: string): string {
 type Props = {
   wallet: WalletInfo | null;
   encrypted: EncryptedBalance | null;
+  sol: SolBalance | null;
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
@@ -96,6 +97,7 @@ export function BalanceDashboard(props: Props) {
         {tab === "public" ? (
           <PublicView
             wallet={wallet}
+            sol={props.sol}
             encryptedBalanceBaseUnits={encrypted?.balanceBaseUnits ?? "0"}
             onShield={props.onShield}
             onCashOut={props.onCashOut}
@@ -192,6 +194,7 @@ function TabBar({
 
 function PublicView({
   wallet,
+  sol,
   encryptedBalanceBaseUnits,
   onShield,
   onCashOut,
@@ -199,6 +202,7 @@ function PublicView({
   timelineProps,
 }: {
   wallet: WalletInfo;
+  sol: SolBalance | null;
   encryptedBalanceBaseUnits: string;
   onShield?: () => void;
   onCashOut?: () => void;
@@ -263,12 +267,27 @@ function PublicView({
         </button>
       </div>
 
-      <div className="flex items-baseline gap-1.5">
-        <span className="balance-number text-5xl font-semibold text-foreground">
-          $<NumberRoller value={balance} durationMs={400} />
-        </span>
-        <span className="text-sm text-muted">USDC</span>
-      </div>
+      <div className="flex flex-col gap-1.5">
+  <div className="flex items-end justify-between gap-3">
+    <div className="flex items-baseline gap-1.5">
+      <span className="balance-number text-5xl font-semibold text-foreground">
+        $<NumberRoller value={balance} durationMs={400} />
+      </span>
+      <span className="text-sm text-muted">USDC</span>
+    </div>
+    {sol && <GasPill sol={sol} />}
+  </div>
+
+  {sol && (sol.health === "low" || sol.health === "empty") && (
+    <div
+      className={`text-xs ${
+        sol.health === "empty" ? "text-danger" : "text-warning"
+      }`}
+    >
+      Top up SOL for gas
+    </div>
+  )}
+</div>
 
       <div className="grid grid-cols-2 gap-2">
         <div className="relative">
@@ -498,5 +517,57 @@ function PrivateView({
         onCountChange={onHistoryCountChange}
       />
     </div>
+  );
+}
+
+// ── Gas pill ─────────────────────────────────────────────────────────────
+
+function GasPill({ sol }: { sol: SolBalance }) {
+  const colors = {
+    healthy: "bg-privacy/10 text-privacy border-privacy/30",
+    low: "bg-warning/10 text-warning border-warning/30",
+    empty: "bg-danger/10 text-danger border-danger/30",
+  } as const;
+
+  // Compose the label: SOL amount + status.
+  let label: string;
+  if (sol.health === "empty") {
+    label = "Out of gas";
+  } else if (sol.health === "low") {
+    label = `${sol.solDisplay} SOL · Low`;
+  } else {
+    label = `${sol.solDisplay} SOL · ≈ ${sol.operationsRemaining} left`;
+  }
+
+  return (
+    <div
+      className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${colors[sol.health]}`}
+      title={`${sol.solDisplay} SOL — for network fees. Each Payhaven transaction costs ~0.005 SOL.`}
+      aria-label={`Gas balance: ${label}`}
+    >
+      <FuelIcon />
+      {label}
+    </div>
+  );
+}
+
+function FuelIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <line x1="3" y1="22" x2="15" y2="22" />
+      <line x1="4" y1="9" x2="14" y2="9" />
+      <path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18" />
+      <path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5" />
+    </svg>
   );
 }

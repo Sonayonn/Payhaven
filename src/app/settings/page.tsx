@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useBalances } from "@/hooks/useBalances";
 import { SettingsHeader } from "@/components/SettingsHeader";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppHeader } from "@/components/AppHeader";
 import { redactIdentifier } from "@/lib/format/identifiers";
 import { ViewingKeyGenerateModal } from "@/components/ViewingKeyGenerateModal";
 import { ViewingKeyGrantsList } from "@/components/ViewingKeyGrantsList";
@@ -56,11 +56,11 @@ export default function SettingsPage() {
 
   return (
     <main className="flex flex-col flex-1 items-center p-4 pt-6 sm:p-6 sm:pt-8">
-      <div className="w-full max-w-md flex justify-end mb-2">
-        <ThemeToggle />
-      </div>
+      <AppHeader showSettings={false} />
 
-      <SettingsHeader title="Settings" />
+      <div className="w-full max-w-md mt-2">
+        <SettingsHeader title="Settings" />
+      </div>
 
       <div className="flex flex-col gap-6 max-w-md w-full">
         {/* ── Account ──────────────────────────────────────────────── */}

@@ -6,6 +6,7 @@ import { getCreateReceiverClaimableUtxoFromEncryptedBalanceProver } from "@umbra
 import { apiError } from "@/lib/api/errors";
 import { log } from "@/lib/log";
 import { usdcToBaseUnits } from "@/lib/money";
+import { checkGasSufficient } from "@/lib/umbra/sol-balance";
 import { USDC_MAINNET_MINT } from "@/lib/umbra/constants";
 import { getPrivyUmbraClient } from "@/lib/umbra/privy-umbra-client";
 import { registerWalletIfNeeded } from "@/lib/umbra/wallet-registration";
@@ -126,6 +127,27 @@ export async function POST(req: NextRequest) {
     senderPrivyUserId,
     senderAddress: senderWallet.solanaAddress,
   });
+
+  // ── Pre-flight gas check ─────────────────────────────────────────────────
+  // Avoids a confusing "Transaction simulation failed" error for the common
+  // case of "user has USDC but no SOL." We surface a clear actionable error.
+  try {
+    const gasError = await checkGasSufficient(senderWallet.solanaAddress);
+    if (gasError) {
+      return apiError("BAD_REQUEST", gasError.message, {
+        logFields: {
+          gasError: true,
+          solDisplay: gasError.solDisplay,
+        },
+      });
+    }
+  } catch (err) {
+    // Don't block on gas-check failures — log and let the SDK try.
+    // Better to attempt and fail with the SDK's error than to falsely block.
+    log.warn("Gas check failed, proceeding anyway", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // ── Precheck: does sender have enough in encrypted balance? ──────────────
   // UX gate: surface a clear error code if the user hasn't shielded enough.

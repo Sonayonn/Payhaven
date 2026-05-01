@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { getAccessToken } from "@privy-io/react-auth";
+import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 
 type Row = {
   token: string;
@@ -54,6 +54,7 @@ function relativeTime(iso: string): string {
 }
 
 export function SendHistory({ refreshKey, onCountChange }: Props) {
+  const { ready, authenticated } = usePrivy();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,10 +81,14 @@ export function SendHistory({ refreshKey, onCountChange }: Props) {
     }
   }, []);
 
-  // Initial fetch + refetch whenever the parent bumps refreshKey.
+  // Initial fetch + refetch on refreshKey bumps. Gated on Privy ready +
+  // authenticated to avoid the same race that hit useBalances, fetching
+  // before getAccessToken() has a token returns null and sticks the
+  // component in a "Not signed in" error until the next manual retrigger.
   useEffect(() => {
+    if (!ready || !authenticated) return;
     fetchRows();
-  }, [fetchRows, refreshKey]);
+  }, [fetchRows, refreshKey, ready, authenticated]);
 
   // Loading: show nothing on first paint to avoid CLS, this section sits
   // below the dashboard, doesn't need a skeleton block. After fetch, render

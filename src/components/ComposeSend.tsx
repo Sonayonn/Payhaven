@@ -56,8 +56,7 @@ export function ComposeSend({
     amountValid &&
     status.kind !== "sending";
 
-  // Preview shows when the form is internally consistent, full identifier,
-  // valid format, positive amount. Drives the anti-typo guard from Step 13.
+// Preview shows when the form is internally consistent, full identifier is entered, and amount is entered — this lets users catch typos before sending, which is important because transactions are irreversible and often sent to new recipients.
   const showPreview =
     canSubmit &&
     recipientValue.length > 0 &&
@@ -209,15 +208,29 @@ export function ComposeSend({
       </button>
 
       {status.kind === "error" && (
-        <div className="p-3 bg-danger/10 border border-danger/30 rounded-md flex flex-col gap-1">
-          <div className="text-sm font-medium text-danger">
-            {status.code === "UPSTREAM_ERROR" && status.message.includes("fetch")
-              ? "Network error, please try again on a stable connection"
-              : "Send failed"}
-          </div>
-          <div className="text-xs text-danger/80">{status.message}</div>
-        </div>
-      )}
+  <div className="p-3 bg-danger/10 border border-danger/30 rounded-md flex flex-col gap-2">
+    <div className="text-sm font-medium text-danger">
+      {status.message.toLowerCase().includes("not enough sol")
+        ? "Not enough SOL for network fees"
+        : status.code === "UPSTREAM_ERROR" && status.message.includes("fetch")
+          ? "Network error — please try again on a stable connection"
+          : status.code === "BAD_REQUEST" && status.message.toLowerCase().includes("private balance")
+            ? "Not enough in your private balance"
+            : "Send failed"}
+    </div>
+    <div className="text-xs text-danger/80 leading-relaxed">{status.message}</div>
+    {status.message.toLowerCase().includes("not enough sol") && (
+      <a
+        href={`https://jup.ag/swap/USDC-SOL?inAmount=2`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="self-start mt-1 text-xs font-medium text-brand hover:text-brand-dark underline"
+      >
+        Get SOL on Jupiter →
+      </a>
+    )}
+  </div>
+)}
     </div>
   );
 }

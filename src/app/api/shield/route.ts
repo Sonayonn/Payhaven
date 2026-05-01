@@ -4,6 +4,7 @@ import { apiError } from "@/lib/api/errors";
 import { log } from "@/lib/log";
 import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
 import { ensureSenderWallet } from "@/lib/privy/sender-wallet";
+import { checkGasSufficient } from "@/lib/umbra/sol-balance";
 import { usdcToBaseUnits } from "@/lib/money";
 import { shieldUsdc } from "@/lib/umbra/shield";
 
@@ -77,6 +78,27 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return apiError("UPSTREAM_ERROR", "Failed to resolve wallet", {
       logFields: { err: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
+  // ── Pre-flight gas check ─────────────────────────────────────────────────
+  // Avoids a confusing "Transaction simulation failed" error for the common
+  // case of "user has USDC but no SOL." We surface a clear actionable error.
+  try {
+    const gasError = await checkGasSufficient(wallet.solanaAddress);
+    if (gasError) {
+      return apiError("BAD_REQUEST", gasError.message, {
+        logFields: {
+          gasError: true,
+          solDisplay: gasError.solDisplay,
+        },
+      });
+    }
+  } catch (err) {
+    // Don't block on gas-check failures — log and let the SDK try.
+    // Better to attempt and fail with the SDK's error than to falsely block.
+    log.warn("Gas check failed, proceeding anyway", {
+      err: err instanceof Error ? err.message : String(err),
     });
   }
 

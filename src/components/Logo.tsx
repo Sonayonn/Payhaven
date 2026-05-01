@@ -9,23 +9,18 @@ type LogoProps = {
 /**
  * Payhaven logo.
  *
- * Iteration D, tilted offset rectangles. Background outline (slightly
- * tilted) represents the public balance; foreground filled cyan represents
- * the private balance. The tilt suggests motion/transformation between
- * the two states.
- *
- * The outline uses currentColor so it adapts to the surrounding text
- * color (dark in light mode, light in dark mode). The cyan fill is
- * fixed in both modes, that's the brand signal.
+ * Lockup ratio: icon and wordmark visually balanced. Wordmark sized at
+ * 0.7 × icon height so the icon reads as the visual anchor (matches
+ * Surgepay/Mercury/Linear convention).
  */
 export function Logo({ size = 32, variant = "mark", className }: LogoProps) {
   if (variant === "lockup") {
     return (
-      <div className={`flex items-center gap-2.5 ${className ?? ""}`}>
+      <div className={`flex items-center gap-2 ${className ?? ""}`}>
         <LogoMark size={size} />
         <span
           className="font-semibold tracking-tight"
-          style={{ fontSize: size * 0.875, lineHeight: 1 }}
+          style={{ fontSize: size * 0.7, lineHeight: 1 }}
         >
           Payhaven
         </span>

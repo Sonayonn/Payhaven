@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getAccessToken } from "@privy-io/react-auth";
+import { getAccessToken, usePrivy } from "@privy-io/react-auth";
 
 type Grant = {
   id: string;
@@ -40,6 +40,7 @@ function formatGenerated(iso: string): string {
 }
 
 export function ViewingKeyGrantsList({ refreshKey, onRevoke }: Props) {
+  const { ready, authenticated } = usePrivy();
   const [grants, setGrants] = useState<Grant[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
@@ -67,9 +68,13 @@ export function ViewingKeyGrantsList({ refreshKey, onRevoke }: Props) {
     }
   }, []);
 
+  // Same Privy-readiness guard as useBalances. Settings page mounts this
+  // immediately on first auth, without the gate, getAccessToken() returns
+  // null, the component flips to "Not signed in" and stays stuck.
   useEffect(() => {
+    if (!ready || !authenticated) return;
     fetchGrants();
-  }, [fetchGrants, refreshKey]);
+  }, [fetchGrants, refreshKey, ready, authenticated]);
 
   async function performRevoke() {
     setRevoking(true);

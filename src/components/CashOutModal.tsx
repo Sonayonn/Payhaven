@@ -21,9 +21,10 @@ type Props = {
   publicBalanceBaseUnits: string;
   privateBalanceBaseUnits: string;
   onRequestUnshield: () => void;
-  /** Fired once when user reaches the "Coming soon" outcome, sets the
-   *  Step 5 (off-ramp) status in PrivacyTimeline this session. */
   onCashOutInitiated?: () => void;
+  /** Triggers when user clicks "Withdraw to wallet" inside the
+   *  Coming Soon outcome view. Parent closes Cash Out, opens Withdraw. */
+  onWithdrawInstead: () => void;
 };
 
 function baseUnitsToUsdc(baseUnits: string): number {
@@ -44,6 +45,7 @@ export function CashOutModal({
   privateBalanceBaseUnits,
   onRequestUnshield,
   onCashOutInitiated,
+  onWithdrawInstead,
 }: Props) {
   const publicMax = baseUnitsToUsdc(publicBalanceBaseUnits);
   const privateAmount = baseUnitsToUsdc(privateBalanceBaseUnits);
@@ -75,8 +77,7 @@ export function CashOutModal({
     }
   }, [open, publicMax]);
 
-
-    // Re-verify whenever account number or bank changes, a verified result is
+  // Re-verify whenever account number or bank changes, a verified result is
   // tied to a specific (bank, account) combination, so editing either field
   // invalidates the result.
   useEffect(() => {
@@ -114,8 +115,6 @@ export function CashOutModal({
       });
     }, 1000);
   }
-
-
 
   const canContinue =
     amountValid && accountValid && verifyState.kind === "verified";
@@ -201,7 +200,7 @@ export function CashOutModal({
               verifyState={verifyState}
               onVerify={startVerify}
               canContinue={canContinue}
-             onContinue={() => {
+              onContinue={() => {
                 setView("outcome");
                 onCashOutInitiated?.();
               }}
@@ -218,6 +217,7 @@ export function CashOutModal({
                 verifyState.kind === "verified" ? verifyState.name : ""
               }
               onClose={onClose}
+              onWithdrawInstead={onWithdrawInstead}
             />
           )}
         </div>
@@ -451,6 +451,7 @@ function ComingSoonView({
   accountNumber,
   accountName,
   onClose,
+  onWithdrawInstead,
 }: {
   amount: number;
   ngnAmount: number;
@@ -458,6 +459,7 @@ function ComingSoonView({
   accountNumber: string;
   accountName: string;
   onClose: () => void;
+  onWithdrawInstead: () => void;
 }) {
   return (
     <div className="flex flex-col gap-4 pb-2 animate-fade-in">
@@ -525,14 +527,25 @@ function ComingSoonView({
         </div>
       </div>
 
-      <div className="rounded-md border border-border p-3 text-xs text-muted">
-        Until Naira withdrawals ship, you can keep your USDC in Payhaven —
-        sending privately works today.
+      <div className="rounded-md border border-border bg-subtle p-4 flex flex-col gap-2">
+        <div className="text-sm font-semibold text-foreground">
+          Or, withdraw to a Solana wallet you control
+        </div>
+        <p className="text-xs text-muted leading-snug">
+          Send your USDC to any Solana wallet | Phantom, Solflare, an exchange.
+          From there, you can convert to Naira through any provider you trust.
+        </p>
+        <button
+          onClick={onWithdrawInstead}
+          className="mt-1 min-h-12 rounded-md bg-foreground text-background text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
+        >
+          Withdraw to wallet
+        </button>
       </div>
 
       <button
         onClick={onClose}
-        className="min-h-12 rounded-md bg-brand text-white text-sm font-semibold hover:bg-brand-dark active:scale-[0.98] brand-glow transition-all"
+        className="min-h-12 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-subtle active:scale-[0.98] transition-all"
       >
         Got it
       </button>

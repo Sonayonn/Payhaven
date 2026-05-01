@@ -3,10 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { usePrivy, getAccessToken } from "@privy-io/react-auth";
-import { LoginButton } from "@/components/LoginButton";
-import { Logo } from "@/components/Logo";
 import { redactIdentifier } from "@/lib/format/identifiers";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { ClaimCard } from "@/components/claim/ClaimCard";
 import { ClaimProgress } from "@/components/ClaimProgress";
 import { ClaimSuccess } from "@/components/ClaimSuccess";
 
@@ -22,7 +20,7 @@ type ClaimInfo = {
 
 type ClaimStatus =
   | { kind: "idle" }
-  | { kind: "claiming" } // while POST is in flight + while ClaimProgress plays
+  | { kind: "claiming" }
   | { kind: "success"; signatures: string[] }
   | { kind: "error"; message: string };
 
@@ -31,30 +29,15 @@ function formatUsdc(baseUnits: string): string {
   return n.toFixed(2);
 }
 
-function ClaimShell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="flex flex-col flex-1 items-center p-4 sm:p-6 min-h-screen bg-background">
-      <div className="w-full max-w-md flex justify-end mb-2">
-        <ThemeToggle />
-      </div>
-      <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center gap-6">
-        {children}
-      </div>
-    </main>
-  );
-}
-
 export default function ClaimPage() {
   const { token } = useParams<{ token: string }>();
-  const { ready, authenticated, logout } = usePrivy();
+  const { ready, authenticated, login, logout } = usePrivy();
 
   const [info, setInfo] = useState<ClaimInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [claimStatus, setClaimStatus] = useState<ClaimStatus>({ kind: "idle" });
 
-  // Drives ClaimProgress: flips true when the API resolves, then progress plays
-  // its remaining stages and calls handleProgressComplete to flip to success.
   const [isClaimComplete, setIsClaimComplete] = useState(false);
   const [pendingResult, setPendingResult] = useState<{
     signatures: string[];
@@ -114,8 +97,6 @@ export default function ClaimPage() {
         );
       }
 
-      // SDK done. Stash the result and let ClaimProgress play "Done" before
-      // we flip to the success view.
       setPendingResult({ signatures: data.claimSignatures ?? [] });
       setIsClaimComplete(true);
       fetchClaimInfo();
@@ -133,183 +114,347 @@ export default function ClaimPage() {
     setClaimStatus({ kind: "success", signatures: pendingResult.signatures });
   }
 
-  // ── Loading ───────────────────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <ClaimShell>
-        <div className="text-sm text-muted">Loading your claim…</div>
-      </ClaimShell>
+      <ClaimCard>
+        <SkeletonCard />
+      </ClaimCard>
     );
   }
 
   // ── Invalid / not found ──────────────────────────────────────────
   if (error || !info) {
     return (
-      <ClaimShell>
-        <div className="w-full rounded-xl border border-border bg-card p-8 text-center flex flex-col gap-3 card-shadow">
-          <h1 className="text-xl font-semibold text-foreground">
-            Claim link not found
-          </h1>
-          <p className="text-sm text-muted">
-            This link is invalid or may have been mistyped. Double-check the URL
-            or ask the sender to resend.
-          </p>
-        </div>
-      </ClaimShell>
+      <ClaimCard>
+        <PremiumPanel
+          icon="warning"
+          title="Claim link not found"
+          body="This link is invalid or may have been mistyped. Double-check the URL or ask the sender to resend."
+        />
+      </ClaimCard>
     );
   }
 
   const amount = formatUsdc(info.amountUsdcBaseUnits);
   const redacted = redactIdentifier(info.recipientIdentifier);
 
-  // ── Already claimed ─────────────────────────────────────────────
+  // ── Already claimed ──────────────────────────────────────────────
   if (
     (info.status === "claimed" || info.claimedAt) &&
     claimStatus.kind !== "success"
   ) {
     return (
-      <ClaimShell>
-        <div className="w-full rounded-xl border border-border bg-card p-8 text-center flex flex-col gap-3 card-shadow">
-          <h1 className="text-xl font-semibold text-foreground">
-            Already claimed
-          </h1>
-          <p className="text-sm text-muted">
-            The ${amount} USDC sent to {redacted} has already been claimed.
-          </p>
-        </div>
-      </ClaimShell>
+      <ClaimCard>
+        <PremiumPanel
+          icon="check"
+          title="Already claimed"
+          body={`The $${amount} USDC sent to ${redacted} has already been claimed.`}
+        />
+      </ClaimCard>
     );
   }
 
-  // ── Loading (Privy not ready) ────────────────────────────────────
+  // ── Privy not yet ready ──────────────────────────────────────────
   if (!ready) {
     return (
-      <ClaimShell>
-        <div className="text-sm text-muted">Loading…</div>
-      </ClaimShell>
+      <ClaimCard>
+        <SkeletonCard />
+      </ClaimCard>
     );
   }
 
   // ── Unauthenticated ──────────────────────────────────────────────
   if (!authenticated) {
     return (
-      <ClaimShell>
-        <div className="w-full flex flex-col items-center gap-6">
-          <div className="flex flex-col items-center gap-3 pt-4">
-            <Logo variant="lockup" size={32} />
-            <h1 className="text-2xl font-semibold text-foreground text-center pt-2">
-              You have ${amount} USDC waiting
-            </h1>
-            <p className="text-sm text-muted text-center max-w-sm">
-              Someone sent you money privately. Sign in to claim it into your
-              Payhaven account, yours to hold, send, or cash out.
+      <ClaimCard>
+        <HeroAmountCard
+          amount={amount}
+          subtitle="is waiting for you"
+          locked
+        />
+        <div className="rounded-xl border border-border bg-card p-6 card-shadow flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <h2 className="text-lg font-semibold text-foreground">
+              Sign in to claim
+            </h2>
+            <p className="text-sm text-muted leading-relaxed">
+              Someone sent you money privately. Sign in with the email or
+              phone this link was addressed to.
             </p>
           </div>
 
-          <div className="w-full">
-            <LoginButton />
-          </div>
+          <button
+            onClick={login}
+            className="min-h-12 w-full rounded-md bg-brand text-white text-sm font-semibold hover:bg-brand-dark active:scale-[0.98] brand-glow transition-all"
+          >
+            Sign in to continue
+          </button>
 
-          <div className="text-xs text-muted text-center max-w-sm pt-4 border-t border-border">
-            Sign in with the email or phone this link was sent to ({redacted}).
-            Your Payhaven balance is private, only you can see it.
+          <div className="rounded-md bg-subtle border border-border p-3 text-xs text-muted leading-snug">
+            <span className="font-semibold text-foreground">Heads up:</span>{" "}
+            Sign in with{" "}
+            <span className="font-mono text-foreground">{redacted}</span>.
+            Only that account can claim this payment.
           </div>
         </div>
-      </ClaimShell>
+      </ClaimCard>
     );
   }
 
   // ── Authenticated but WRONG identity ─────────────────────────────
   if (!info.isAuthorizedRecipient) {
     return (
-      <ClaimShell>
-        <div className="w-full flex flex-col items-center gap-6">
-          <div className="flex flex-col items-center gap-3 pt-4">
-            <Logo variant="lockup" size={32} />
-            <h1 className="text-2xl font-semibold text-foreground text-center pt-2">
-              Wrong account
-            </h1>
-            <p className="text-sm text-muted text-center max-w-sm">
-              This claim is addressed to{" "}
-              <span className="font-medium text-foreground">{redacted}</span>.
-              You&apos;re signed in with a different account.
-            </p>
-            <p className="text-sm text-muted text-center max-w-sm pt-2">
-              Sign out and sign back in using the email or phone the sender
-              addressed this to.
-            </p>
-          </div>
-
+      <ClaimCard>
+        <PremiumPanel
+          icon="warning"
+          title="Wrong account"
+          body=""
+        >
+          <p className="text-sm text-muted leading-relaxed">
+            This payment is addressed to{" "}
+            <span className="font-semibold font-mono text-foreground">
+              {redacted}
+            </span>
+            . You&apos;re signed in with a different account.
+          </p>
+          <p className="text-sm text-muted leading-relaxed pt-2">
+            Sign out and sign back in with the email or phone above.
+          </p>
           <button
             onClick={() => logout()}
-            className="min-h-12 w-full px-4 bg-foreground text-background rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
+            className="mt-2 min-h-12 w-full rounded-md bg-foreground text-background text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-opacity"
           >
             Sign out
           </button>
-        </div>
-      </ClaimShell>
+        </PremiumPanel>
+      </ClaimCard>
     );
   }
 
-  // ── Authorized: idle / claiming / success / error ───────────────
+  // ── Success, confetti view ──────────────────────────────────────
+  if (claimStatus.kind === "success") {
+    return (
+      <ClaimCard>
+        <ClaimSuccess
+          amount={amount}
+          txSignature={claimStatus.signatures[0]}
+        />
+      </ClaimCard>
+    );
+  }
+
+  // ── Authorized: idle / claiming / error ──────────────────────────
   return (
-    <ClaimShell>
-      <div className="w-full flex flex-col items-center gap-6">
-        {claimStatus.kind !== "success" && (
-          <div className="flex flex-col items-center gap-3 pt-4">
-            <Logo variant="lockup" size={32} />
-            <h1 className="text-2xl font-semibold text-foreground text-center pt-2">
-              Ready to claim ${amount} USDC
-            </h1>
-            <p className="text-sm text-muted text-center max-w-sm">
-              This will go privately into your Payhaven balance. Only you can
-              see it.
-            </p>
-          </div>
-        )}
+    <ClaimCard>
+      {claimStatus.kind === "idle" && (
+        <>
+          <HeroAmountCard
+            amount={amount}
+            subtitle="ready to claim"
+            locked
+          />
+          <div className="rounded-xl border border-border bg-card p-6 card-shadow flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-lg font-semibold text-foreground">
+                Ready to claim privately
+              </h2>
+              <p className="text-sm text-muted leading-relaxed">
+                This will go privately into your Payhaven balance. Encrypted
+                on-chain | only you can see it.
+              </p>
+            </div>
 
-        {claimStatus.kind === "idle" && (
-          <button
-            onClick={handleClaim}
-            className="min-h-12 w-full px-4 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-dark transition-colors brand-glow active:scale-[0.98]"
-          >
-            Claim ${amount}
-          </button>
-        )}
+            <button
+              onClick={handleClaim}
+              className="min-h-12 w-full rounded-md bg-brand text-white text-sm font-semibold hover:bg-brand-dark active:scale-[0.98] brand-glow transition-all"
+            >
+              Claim ${amount}
+            </button>
 
-        {claimStatus.kind === "claiming" && (
-          <div className="w-full p-5 bg-card border border-border rounded-xl card-shadow">
-            <ClaimProgress
-              isComplete={isClaimComplete}
-              onComplete={handleProgressComplete}
-            />
-            <div className="text-xs text-muted text-center pt-2">
-              The proof keeps your claim private, even we can&apos;t see which
-              UTXO you&apos;re claiming.
+            <div className="flex items-center gap-2 text-xs text-faint pt-1">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+                className="text-privacy"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <span>Gasless | no SOL required to claim.</span>
             </div>
           </div>
-        )}
+        </>
+      )}
 
-        {claimStatus.kind === "success" && (
-          <ClaimSuccess
-            amount={amount}
-            txSignature={claimStatus.signatures[0]}
+      {claimStatus.kind === "claiming" && (
+        <div className="rounded-xl border border-border bg-card p-6 card-shadow flex flex-col gap-4">
+          <ClaimProgress
+            isComplete={isClaimComplete}
+            onComplete={handleProgressComplete}
           />
-        )}
-
-        {claimStatus.kind === "error" && (
-          <div className="w-full flex flex-col gap-2 p-4 bg-danger/10 border border-danger/30 rounded-md">
-            <div className="text-sm font-medium text-danger">Claim failed</div>
-            <div className="text-xs text-danger/80">{claimStatus.message}</div>
-            <button
-              onClick={() => setClaimStatus({ kind: "idle" })}
-              className="mt-2 text-xs font-medium text-danger underline self-start"
-            >
-              Try again
-            </button>
+          <div className="text-xs text-muted text-center pt-2 leading-relaxed border-t border-border pt-4">
+            The proof keeps your claim private, even Payhaven can&apos;t see
+            which UTXO you&apos;re claiming.
           </div>
+        </div>
+      )}
+
+      {claimStatus.kind === "error" && (
+        <PremiumPanel icon="warning" title="Claim failed" body="">
+          <p className="text-sm text-danger/90 leading-relaxed">
+            {claimStatus.message}
+          </p>
+          <button
+            onClick={() => setClaimStatus({ kind: "idle" })}
+            className="mt-3 min-h-12 w-full rounded-md bg-brand text-white text-sm font-semibold hover:bg-brand-dark active:scale-[0.98] brand-glow transition-all"
+          >
+            Try again
+          </button>
+        </PremiumPanel>
+      )}
+    </ClaimCard>
+  );
+}
+
+// ── Hero amount card, the visual anchor ─────────────────────────────────
+
+function HeroAmountCard({
+  amount,
+  subtitle,
+  locked,
+}: {
+  amount: string;
+  subtitle: string;
+  locked?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 card-shadow text-center flex flex-col items-center gap-3">
+      <div className="text-xs font-medium uppercase tracking-wider text-faint">
+        You have a payment
+      </div>
+      <div className="flex items-center justify-center gap-2.5">
+        {locked && (
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-privacy animate-lock-pulse"
+            aria-hidden
+          >
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        )}
+        <span className="balance-number text-5xl sm:text-6xl font-semibold text-foreground tracking-tight">
+          ${amount}
+        </span>
+      </div>
+      <div className="text-sm text-muted">USDC {subtitle}</div>
+    </div>
+  );
+}
+
+// ── Premium panel, used by error/info states ────────────────────────────
+
+function PremiumPanel({
+  icon,
+  title,
+  body,
+  children,
+}: {
+  icon: "warning" | "check";
+  title: string;
+  body: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 sm:p-8 card-shadow flex flex-col items-center text-center gap-4">
+      <div
+        className={`w-14 h-14 rounded-full flex items-center justify-center ${
+          icon === "warning"
+            ? "bg-warning/10 border border-warning/30"
+            : "bg-privacy/10 border border-privacy/30"
+        }`}
+      >
+        {icon === "warning" ? (
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-warning"
+            aria-hidden
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        ) : (
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-privacy"
+            aria-hidden
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
         )}
       </div>
-    </ClaimShell>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-xl sm:text-2xl font-semibold text-foreground">
+          {title}
+        </h1>
+        {body && (
+          <p className="text-sm text-muted leading-relaxed">{body}</p>
+        )}
+      </div>
+      {children && <div className="w-full">{children}</div>}
+    </div>
+  );
+}
+
+// ── Skeleton  for loading states ────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 card-shadow flex flex-col items-center gap-4 animate-fade-in">
+      <Shimmer className="h-3 w-32" />
+      <Shimmer className="h-12 w-48 rounded-md" />
+      <Shimmer className="h-3 w-24" />
+      <Shimmer className="h-12 w-full rounded-md mt-3" />
+    </div>
+  );
+}
+
+function Shimmer({ className }: { className?: string }) {
+  return (
+    <div
+      className={"relative overflow-hidden bg-subtle rounded " + (className ?? "")}
+    >
+      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-border/40 to-transparent" />
+    </div>
   );
 }
