@@ -20,6 +20,8 @@
     "@types/canvas-confetti": "^1.9.0",
     "@umbra-privacy/sdk": "^2.0.3",
     "@umbra-privacy/web-zk-prover": "^2.0.1",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "bs58": "^6.0.0",
     "canvas-confetti": "^1.9.4",
     "next": "16.2.4",

@@ -34,7 +34,7 @@ export function HowItWorks() {
           <Step
             number="03"
             title="Receive"
-            body="Your recipient gets a WhatsApp link. They tap it, sign in, and the money lands, visible only to them."
+            body="You give your recipient a link on Whatsapp. They tap it, sign in, and the money lands, visible only to them."
             visualKind="receive"
           />
         </div>

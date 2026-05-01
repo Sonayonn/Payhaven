@@ -10,6 +10,8 @@ import { VisibleVsHidden } from "./VisibleVsHidden";
 import { LandingFooter } from "./LandingFooter";
 import { InviteCodeModal } from "@/components/InviteCodeModal";
 import { buildRequestInviteUrl } from "@/lib/whatsapp";
+import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { ProofNotPromises } from "./ProofNotPromises";
 
 export function LandingPage() {
@@ -35,6 +37,8 @@ export function LandingPage() {
       <ProofNotPromises />
       <Compliance />
       <BuiltOnUmbra />
+      <SpeedInsights/>
+      <Analytics/>
       <LandingFooter onHaveCode={handleHaveCode} />
 
       <InviteCodeModal

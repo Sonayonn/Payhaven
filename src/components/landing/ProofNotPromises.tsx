@@ -17,24 +17,24 @@ type Receipt = {
 const RECEIPTS: Receipt[] = [
   {
     primitive: "Shield",
-    description: "$0.10 USDC moved from public ATA into encrypted balance.",
+    description: "Move USDC from public ATA into encrypted balance.",
     signature:
-      "GSzCiWe7TsRDy3MQ8xaaAMof69ik17e4GxEpnsF6veuaibCckP33k9Dt1i6nMrVGR3Pqf7kNaPWr8ejUA2FHhou",
+      "2Uwj6vf3FTFrTsQfxP2kiwSA7KdTn2qtUQnStt15R7yhWT65UP21d4VxcBWk23Rdwvo8zn4szKtDHUCL2DkvDke8",
     callbackMs: 4650,
   },
   {
     primitive: "Encrypted-balance send",
     description:
-      "$0.05 sent privately. Sender wallet visible, amount and recipient encrypted.",
+      "Send USDC privately. Sender wallet visible, amount and recipient encrypted.",
     signature:
-      "GSzCiWe7TsRDy3MQ8xaaAMof69ik17e4GxEpnsF6veuaibCckP33k9Dt1i6nMrVGR3Pqf7kNaPWr8ejUA2FHhou",
+      "3beVmcbQehwgwrXWL1BYLnArQF5qBx9QqEZJ4hBewfUPFaA9NGH9J3mByNwqtgxMKk3HqomBhukAnQUHRLwbkgUL",
     callbackMs: 4650,
   },
   {
     primitive: "Unshield",
-    description: "$0.05 moved from encrypted balance back to public ATA for offramp.",
+    description: "Move USDC from encrypted balance back to public ATA for offramp.",
     signature:
-      "3yBrNJF2U7v2xRo17RgLTMzxd8LLymNVbANLrtiSMTZi7RRJKgmuXTpNzEZjrJFYWkEfvenDoB4g9rSuSzoU72tr",
+      "5ahP7RCM5Paxy9wZezS1gZSceNnUNwK61ALK3BEuwDeUMBnqJdcNv2BStJdxqxnLf1cYnRMroUxKxmYrKZq8jBMR",
     callbackMs: 3992,
   },
 ];

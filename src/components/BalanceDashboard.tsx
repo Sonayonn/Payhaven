@@ -267,8 +267,8 @@ function PublicView({
         </button>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-  <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-col gap-2">
+  <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
     <div className="flex items-baseline gap-1.5">
       <span className="balance-number text-5xl font-semibold text-foreground">
         $<NumberRoller value={balance} durationMs={400} />
@@ -529,7 +529,6 @@ function GasPill({ sol }: { sol: SolBalance }) {
     empty: "bg-danger/10 text-danger border-danger/30",
   } as const;
 
-  // Compose the label: SOL amount + status.
   let label: string;
   if (sol.health === "empty") {
     label = "Out of gas";
@@ -541,7 +540,7 @@ function GasPill({ sol }: { sol: SolBalance }) {
 
   return (
     <div
-      className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${colors[sol.health]}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium whitespace-nowrap ${colors[sol.health]}`}
       title={`${sol.solDisplay} SOL — for network fees. Each Payhaven transaction costs ~0.005 SOL.`}
       aria-label={`Gas balance: ${label}`}
     >

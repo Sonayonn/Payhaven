@@ -5,34 +5,49 @@ export function WhyPrivacy() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-16">
           {/* Left: copy */}
           <div className="md:col-span-7">
-            <div className="text-xs font-medium uppercase tracking-wider text-warning mb-3">
-              Why privacy matters
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-semibold tracking-tight text-foreground leading-tight">
-              Crypto remittances shouldn&apos;t paint a target on your family.
-            </h2>
-            <div className="mt-6 space-y-4 text-base text-muted leading-relaxed">
-              <p>
-                Nigeria received{" "}
-                <span className="font-semibold text-foreground">$21B</span> in
-                remittances in 2024, the highest in five years. It also saw{" "}
-                <span className="font-semibold text-foreground">
-                  2.2 million kidnappings
-                </span>{" "}
-                in a single twelve-month period. 91% of them were for ransom.
-              </p>
-              <p>
-                Every public USDC transfer is a billboard. On-chain
-                surveillance plus a single KYC leak means criminals can
-                identify, profile, and target the recipients of foreign
-                remittances.
-              </p>
-              <p>
-                Existing crypto remittance apps moved money cheaply. They left
-                it fully visible. We&apos;re fixing the half they skipped.
-              </p>
-            </div>
-          </div>
+  <div className="text-xs font-medium uppercase tracking-wider text-warning mb-3">
+    Why privacy matters
+  </div>
+
+  {/* Vignette — three sentences that set up the threat model emotionally
+      before the statistics make it concrete. Composite, not a real case. */}
+  <div className="mb-8 pl-5 border-l-2 border-warning/40">
+    <p className="text-lg text-foreground leading-relaxed italic">
+      Lagos, March 2024. A grandmother receives $20,000 from her son in
+      Toronto. Two days later, three men knock on her door. They knew
+      the amount. They knew the date. They had been watching her wallet
+      for months.
+    </p>
+    <p className="mt-3 text-sm text-muted">
+      Composite based on patterns documented by the Nigeria Bureau of
+      Statistics and reporting from Punch, Premium Times, and BBC Pidgin.
+    </p>
+  </div>
+
+  <h2 className="text-3xl sm:text-5xl font-semibold tracking-tight text-foreground leading-tight">
+    Crypto remittances shouldn&apos;t paint a target on your family.
+  </h2>
+  <div className="mt-6 space-y-4 text-base text-muted leading-relaxed">
+    <p>
+      Nigeria received{" "}
+      <span className="font-semibold text-foreground">$21B</span> in
+      remittances in 2024, the highest in five years. It also saw{" "}
+      <span className="font-semibold text-foreground">
+        2.2 million kidnappings
+      </span>{" "}
+      in a single twelve-month period. 91% of them were for ransom.
+    </p>
+    <p>
+      Every public USDC transfer is a billboard. On-chain surveillance
+      plus a single KYC leak means criminals can identify, profile, and
+      target the recipients of foreign remittances.
+    </p>
+    <p>
+      <span className="font-semibold text-foreground">Existing crypto remittance apps moved money cheaply. But, they left it
+      fully visible. We&apos;re fixing the half they skipped.</span>
+    </p>
+  </div>
+</div>
 
           {/* Right: stat cards */}
           <div className="md:col-span-5 grid grid-cols-1 gap-3">
