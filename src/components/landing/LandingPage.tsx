@@ -12,6 +12,7 @@ import { InviteCodeModal } from "@/components/InviteCodeModal";
 import { buildRequestInviteUrl } from "@/lib/whatsapp";
 import { Analytics } from "@vercel/analytics/next"
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { InteractiveDemo } from "./InteractiveDemo";
 import { ProofNotPromises } from "./ProofNotPromises";
 
 export function LandingPage() {
@@ -32,6 +33,7 @@ export function LandingPage() {
         onHaveCode={handleHaveCode}
       />
       <HowItWorks />
+      <InteractiveDemo />
       <VisibleVsHidden />
       <WhyPrivacy />
       <ProofNotPromises />
