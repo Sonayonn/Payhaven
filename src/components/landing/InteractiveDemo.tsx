@@ -77,8 +77,7 @@ export function InteractiveDemo() {
             From funded to private, in four taps.
           </h2>
           <p className="mt-4 text-base sm:text-lg text-muted leading-relaxed">
-            This is the actual Payhaven flow — what your
-            grandmother in Lagos sees when you send her money home.
+            The actual Payhaven flow — experience the magic, in four steps.
           </p>
         </div>
 
