@@ -131,6 +131,14 @@ export async function claimReceiverUtxo(params: {
     try {
       const result = await claim(receiverUtxos);
 
+      // DIAGNOSTIC: dump the actual result shape
+    log.error("CLAIM RESULT SHAPE DEBUG", {
+      keys: Object.keys(result as object),
+      stringified: JSON.stringify(result, (_k, v) =>
+      typeof v === "bigint" ? v.toString() : v
+      ),
+     });
+
       // Result shape may be { signatures: Record<...> } per docs OR
       // { batches: Map<...> } per CONVENTIONS §1 drift #4. Flatten either.
       const claimSignatures: string[] = [];
