@@ -29,7 +29,7 @@ const SAFE_PRODUCTION_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   INTERNAL_ERROR:
     "Something went wrong on our end. Please try again — if it keeps happening, give us a shout.",
   UPSTREAM_ERROR:
-    "We couldn't reach a service we depend on. This is usually temporary — please try again in a moment.",
+    "Not enough sol for gas, topup your wallet and try again. If you just topped up, please allow a minute for the network to reflect the new balance.",
 };
 
 export function apiError(
