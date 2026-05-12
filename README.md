@@ -227,7 +227,7 @@ Every step writes a real transaction to Solana mainnet. Each signature is verifi
 
 1. Visit [payhaven.net](https://payhaven.net), enter an invite code
 2. Sign in with email or phone — your Solana wallet is created automatically
-3. Fund the wallet with USDC (visible deposit address on the Public tab)
+3. Fund the wallet with USDC (visible deposit address on the Public tab) and sol for gas
 4. Tap **Shield** to move USDC into the encrypted pool — the balance moves to your Private tab
 5. Tap **Send privately**, enter the recipient's email or phone, and the amount
 6. Share the generated claim link via WhatsApp, SMS, or email
