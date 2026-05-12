@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { usePrivy, getAccessToken } from "@privy-io/react-auth";
 import { redactIdentifier } from "@/lib/format/identifiers";
@@ -20,8 +20,8 @@ type ClaimInfo = {
 
 type ClaimStatus =
   | { kind: "idle" }
-  | { kind: "claiming" }
-  | { kind: "success"; signatures: string[] }
+  | { kind: "claiming"; claimedCount: number; lastSignature: string | null }
+  | { kind: "success"; signatures: string[]; totalClaimed: number }
   | { kind: "error"; message: string };
 
 function formatUsdc(baseUnits: string): string {
@@ -38,10 +38,8 @@ export default function ClaimPage() {
   const [error, setError] = useState<string | null>(null);
   const [claimStatus, setClaimStatus] = useState<ClaimStatus>({ kind: "idle" });
 
-  const [isClaimComplete, setIsClaimComplete] = useState(false);
-  const [pendingResult, setPendingResult] = useState<{
-    signatures: string[];
-  } | null>(null);
+  // Accumulate signatures across multiple drain calls
+  const allSignaturesRef = useRef<string[]>([]);
 
   const fetchClaimInfo = useCallback(async () => {
     if (!token) return;
@@ -73,46 +71,113 @@ export default function ClaimPage() {
     fetchClaimInfo();
   }, [fetchClaimInfo]);
 
-  async function handleClaim() {
-    if (!token || !info) return;
-    setIsClaimComplete(false);
-    setPendingResult(null);
-    setClaimStatus({ kind: "claiming" });
+  /**
+   * Performs ONE claim call against /api/claim/[token].
+   * Returns { remainingUtxoCount, signatures, queueEmpty } so the caller
+   * can decide whether to loop.
+   */
+  const performSingleClaim = useCallback(async (): Promise<{
+    remainingUtxoCount: number;
+    signatures: string[];
+    queueEmpty: boolean;
+  }> => {
+    const accessToken = await getAccessToken();
+    if (!accessToken) throw new Error("Not signed in");
 
-    try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) throw new Error("Not signed in");
+    const res = await fetch("/api/claim/" + token, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + accessToken,
+        "Content-Type": "application/json",
+      },
+    });
 
-      const res = await fetch("/api/claim/" + token, {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + accessToken,
-          "Content-Type": "application/json",
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          data?.error?.message ?? data?.message ?? "HTTP " + res.status,
-        );
-      }
-
-      setPendingResult({ signatures: data.claimSignatures ?? [] });
-      setIsClaimComplete(true);
-      fetchClaimInfo();
-    } catch (e) {
-      setClaimStatus({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Claim failed",
-      });
-      setIsClaimComplete(false);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(
+        data?.error?.message ?? data?.message ?? "HTTP " + res.status,
+      );
     }
-  }
 
-  function handleProgressComplete() {
-    if (!pendingResult) return;
-    setClaimStatus({ kind: "success", signatures: pendingResult.signatures });
-  }
+    return {
+      remainingUtxoCount: data.remainingUtxoCount ?? 0,
+      signatures: data.claimSignatures ?? [],
+      queueEmpty: data.queueEmpty === true,
+    };
+  }, [token]);
+
+  /**
+   * Drains the recipient's UTXO queue by calling /api/claim/[token]
+   * repeatedly until queueEmpty=true (or remainingUtxoCount=0).
+   *
+   * Each call generates a ZK proof server-side and takes ~2-3 minutes
+   * cold-start, much less warm. UI updates progress after each call.
+   *
+   * Safety cap: max 20 iterations to prevent infinite loops if the API
+   * misbehaves. Real users will have 1-2 UTXOs; the cap exists for
+   * test environments where queues can back up.
+   */
+  const drainQueue = useCallback(async () => {
+    allSignaturesRef.current = [];
+    setClaimStatus({ kind: "claiming", claimedCount: 0, lastSignature: null });
+
+    const MAX_DRAINS = 20;
+    let claimedCount = 0;
+
+    for (let i = 0; i < MAX_DRAINS; i++) {
+      try {
+        const result = await performSingleClaim();
+
+        if (result.queueEmpty || result.signatures.length === 0) {
+          // Queue is empty. We're done.
+          break;
+        }
+
+        // Record this claim's signature(s)
+        allSignaturesRef.current.push(...result.signatures);
+        claimedCount += 1;
+
+        // Update UI with progress
+        setClaimStatus({
+          kind: "claiming",
+          claimedCount,
+          lastSignature: result.signatures[0] ?? null,
+        });
+
+        // If the server says queue is now empty, stop
+        if (result.remainingUtxoCount === 0) {
+          break;
+        }
+
+        // Otherwise, loop and claim the next UTXO
+      } catch (e) {
+        // If we've already claimed something, treat the error as partial success
+        if (claimedCount > 0) {
+          setClaimStatus({
+            kind: "success",
+            signatures: allSignaturesRef.current,
+            totalClaimed: claimedCount,
+          });
+          fetchClaimInfo();
+          return;
+        }
+        // Otherwise, surface the error
+        setClaimStatus({
+          kind: "error",
+          message: e instanceof Error ? e.message : "Claim failed",
+        });
+        return;
+      }
+    }
+
+    // Drain complete — show success
+    setClaimStatus({
+      kind: "success",
+      signatures: allSignaturesRef.current,
+      totalClaimed: claimedCount,
+    });
+    fetchClaimInfo();
+  }, [performSingleClaim, fetchClaimInfo]);
 
   // ── Loading ──────────────────────────────────────────────────────
   if (loading) {
@@ -142,7 +207,8 @@ export default function ClaimPage() {
   // ── Already claimed ──────────────────────────────────────────────
   if (
     (info.status === "claimed" || info.claimedAt) &&
-    claimStatus.kind !== "success"
+    claimStatus.kind !== "success" &&
+    claimStatus.kind !== "claiming"
   ) {
     return (
       <ClaimCard>
@@ -206,11 +272,7 @@ export default function ClaimPage() {
   if (!info.isAuthorizedRecipient) {
     return (
       <ClaimCard>
-        <PremiumPanel
-          icon="warning"
-          title="Wrong account"
-          body=""
-        >
+        <PremiumPanel icon="warning" title="Wrong account" body="">
           <p className="text-sm text-muted leading-relaxed">
             This payment is addressed to{" "}
             <span className="font-semibold font-mono text-foreground">
@@ -232,17 +294,19 @@ export default function ClaimPage() {
     );
   }
 
-  // ── Success, confetti view ──────────────────────────────────────
+  // ── Success ──────────────────────────────────────
   if (claimStatus.kind === "success") {
-    return (
-      <ClaimCard>
-        <ClaimSuccess
-          amount={amount}
-          txSignature={claimStatus.signatures[0]}
-        />
-      </ClaimCard>
-    );
-  }
+  return (
+    <ClaimCard>
+      <ClaimSuccess
+        amount={amount}
+        txSignature={claimStatus.signatures[0]}
+        totalClaimed={claimStatus.totalClaimed}
+        allSignatures={claimStatus.signatures}
+      />
+    </ClaimCard>
+  );
+}
 
   // ── Authorized: idle / claiming / error ──────────────────────────
   return (
@@ -266,7 +330,7 @@ export default function ClaimPage() {
             </div>
 
             <button
-              onClick={handleClaim}
+              onClick={drainQueue}
               className="min-h-12 w-full rounded-md bg-brand text-white text-sm font-semibold hover:bg-brand-dark active:scale-[0.98] brand-glow transition-all"
             >
               Claim ${amount}
@@ -297,11 +361,23 @@ export default function ClaimPage() {
       {claimStatus.kind === "claiming" && (
         <div className="rounded-xl border border-border bg-card p-6 card-shadow flex flex-col gap-4">
           <ClaimProgress
-            isComplete={isClaimComplete}
-            onComplete={handleProgressComplete}
+            isComplete={false}
+            onComplete={() => {
+              /* drainQueue handles completion */
+            }}
           />
-          <div className="text-xs text-muted text-center pt-2 leading-relaxed border-t border-border pt-4">
-            The proof keeps your claim private, even Payhaven can&apos;t see
+          {claimStatus.claimedCount > 0 && (
+            <div className="rounded-md bg-privacy/5 border border-privacy/20 p-3 text-xs text-foreground leading-relaxed">
+              <span className="font-semibold text-privacy">
+                {claimStatus.claimedCount} claim
+                {claimStatus.claimedCount > 1 ? "s" : ""} completed
+              </span>
+              {" — "}
+              checking for more queued payments...
+            </div>
+          )}
+          <div className="text-xs text-muted text-center leading-relaxed border-t border-border pt-2">
+            The proof keeps your claim private — even Payhaven can&apos;t see
             which UTXO you&apos;re claiming.
           </div>
         </div>
@@ -367,7 +443,7 @@ function HeroAmountCard({
   );
 }
 
-// ── Premium panel, used by error/info states ────────────────────────────
+// ── Premium panel ──────────────────────────────────────────────────────
 
 function PremiumPanel({
   icon,
@@ -427,16 +503,14 @@ function PremiumPanel({
         <h1 className="text-xl sm:text-2xl font-semibold text-foreground">
           {title}
         </h1>
-        {body && (
-          <p className="text-sm text-muted leading-relaxed">{body}</p>
-        )}
+        {body && <p className="text-sm text-muted leading-relaxed">{body}</p>}
       </div>
       {children && <div className="w-full">{children}</div>}
     </div>
   );
 }
 
-// ── Skeleton  for loading states ────────────────────────────────────────
+// ── Skeleton for loading states ────────────────────────────────────────
 
 function SkeletonCard() {
   return (

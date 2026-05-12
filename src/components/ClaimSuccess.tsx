@@ -7,14 +7,20 @@ import confetti from "canvas-confetti";
 type Props = {
   amount: string;
   txSignature?: string;
+  totalClaimed?: number;
+  allSignatures?: string[];
 };
 
-export function ClaimSuccess({ amount, txSignature }: Props) {
+export function ClaimSuccess({
+  amount,
+  txSignature,
+  totalClaimed,
+  allSignatures,
+}: Props) {
   const router = useRouter();
 
   useEffect(() => {
     // Single tasteful burst from mid-screen. ~80 particles, 2s decay.
-    // disableForReducedMotion respects the user's accessibility setting.
     confetti({
       particleCount: 80,
       spread: 70,
@@ -26,6 +32,9 @@ export function ClaimSuccess({ amount, txSignature }: Props) {
       disableForReducedMotion: true,
     });
   }, []);
+
+  // Multiple claims indicates a queue was drained — show how many
+  const isMultiClaim = (totalClaimed ?? 0) > 1;
 
   return (
     <div className="w-full flex flex-col items-center gap-6 animate-fade-in">
@@ -48,11 +57,12 @@ export function ClaimSuccess({ amount, txSignature }: Props) {
           </svg>
         </div>
         <h1 className="text-xl font-semibold text-foreground text-center pt-2">
-          ${amount} USDC claimed
+          {isMultiClaim ? `${totalClaimed} payments claimed` : `$${amount} USDC claimed`}
         </h1>
         <p className="text-sm text-muted text-center max-w-sm">
-          It&apos;s now in your private Payhaven balance, encrypted on-chain,
-          visible only to you.
+          {isMultiClaim
+            ? `${totalClaimed} pending payments have been claimed into your private Payhaven balance. Encrypted on-chain, visible only to you.`
+            : "It's now in your private Payhaven balance — encrypted on-chain, visible only to you."}
         </p>
       </div>
 
@@ -72,8 +82,21 @@ export function ClaimSuccess({ amount, txSignature }: Props) {
         </button>
       </div>
 
-      {/* Solscan proof, Step 16 makes this universal; foreshadowing it here. */}
-      {txSignature && (
+      {/* Solscan proof — single signature shows direct link;
+          multiple signatures show count + link to first as representative */}
+      {isMultiClaim && allSignatures && allSignatures.length > 0 ? (
+        <div className="flex flex-col items-center gap-1.5 text-xs text-muted">
+          <span>{allSignatures.length} on-chain transactions</span>
+          <a
+            href={`https://solscan.io/tx/${allSignatures[0]}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono underline hover:text-foreground"
+          >
+            View first on Solscan →
+          </a>
+        </div>
+      ) : txSignature ? (
         <a
           href={`https://solscan.io/tx/${txSignature}`}
           target="_blank"
@@ -82,7 +105,7 @@ export function ClaimSuccess({ amount, txSignature }: Props) {
         >
           View on Solscan →
         </a>
-      )}
+      ) : null}
     </div>
   );
 }

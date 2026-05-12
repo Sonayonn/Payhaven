@@ -7,18 +7,26 @@ import {
 } from "@/lib/claim-tokens/server";
 import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
 import { normalizeIdentifier } from "@/lib/privy/pregen";
-import { claimReceiverUtxo } from "@/lib/umbra/claim-utxo";
+import {
+  claimReceiverUtxo,
+  ClaimNotSubmittedError,
+} from "@/lib/umbra/claim-utxo";
 
 /**
- * POST /api/claim/[token], claim the receiver-claimable UTXO.
+ * POST /api/claim/[token] — claim ONE receiver-claimable UTXO.
  *
- * Recipient must be authenticated via Privy AND their email/phone must match
- * the claim_token's recipient_identifier. Server-side signs the claim using
- * the pregenerated Payhaven wallet for that identifier. Gasless for the
- * recipient (Umbra relayer pays tx fees).
+ * The recipient may have multiple unclaimed UTXOs (across multiple sends).
+ * Each call to this endpoint claims a single UTXO (FIFO, oldest first) and
+ * returns `remainingUtxoCount`. The frontend is expected to loop until that
+ * count is 0.
  *
- * Idempotency: if claim_tokens.status is already 'claimed', returns the
- * existing claim_tx_signature without re-submitting to the relayer.
+ * Why one UTXO per call: each claim generates a ZK proof that spikes RAM by
+ * ~500MB-1GB. Vercel function memory caps would be blown by batched claims.
+ * Looping client-side, each call gets a fresh memory allocation.
+ *
+ * The DB row is marked claimed on the FIRST successful claim. Subsequent
+ * calls (draining the queue) update claimed_tx_signature with the latest
+ * signature but do not error on the already-claimed status.
  */
 export async function POST(
   req: NextRequest,
@@ -74,57 +82,55 @@ export async function POST(
     );
   }
 
-  // ── Already claimed? Idempotent short-circuit ───────────────────────────
-  if (record.status === "claimed") {
-    return Response.json({
-      ok: true,
-      alreadyClaimed: true,
-      claimSignatures: [record.createUtxoSignature], // best-effort; real sig is in claimed_tx_signature field but we didn't select it
-      message: "This claim has already been completed",
-    });
-  }
-
-  // ── Need recipient_wallet_id to build the Umbra client ──────────────────
-  // findClaimTokenByToken doesn't currently return recipient_wallet_id publicly
-  // (it's an internal detail). Re-query with full select, or extend the helper.
-  // For simplicity, we extend findClaimTokenByToken below, see #6.
-  const recipientWalletId = (record as unknown as { recipientWalletId?: string })
-    .recipientWalletId;
-  const recipientAddress = (record as unknown as { recipientAddress?: string })
-    .recipientAddress;
-
-  if (!recipientWalletId || !recipientAddress) {
-    log.error("Claim token missing recipient wallet details", { token });
-    return apiError(
-      "INTERNAL_ERROR",
-      "Claim token record is incomplete, contact support",
-    );
-  }
-
-  // ── Submit claim to Umbra ───────────────────────────────────────────────
+  // ── Submit one claim to Umbra ───────────────────────────────────────────
+  //
+  // We deliberately do NOT short-circuit on record.status === "claimed".
+  // The DB row tracks first-claim state, but the recipient may have more
+  // UTXOs queued on-chain (multiple sends to the same recipient before
+  // claiming). We drain one UTXO per call; frontend loops until queue empty.
   let claimResult;
   try {
     claimResult = await claimReceiverUtxo({
-      recipientWalletId,
-      recipientAddress,
+      recipientWalletId: record.recipientWalletId,
+      recipientAddress: record.recipientAddress,
       createUtxoSignature: record.createUtxoSignature,
     });
   } catch (err) {
+    // Special handling: "no claimable UTXOs found" means the queue is empty.
+    // This is a NORMAL terminal state when the frontend loop has drained
+    // everything. Return ok with remainingUtxoCount=0 rather than an error.
     const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("No claimable UTXOs found")) {
+      return Response.json({
+        ok: true,
+        claimSignatures: [],
+        remainingUtxoCount: 0,
+        queueEmpty: true,
+      });
+    }
+
+    if (err instanceof ClaimNotSubmittedError) {
+      log.error("Claim returned no signatures", { token, message });
+      return apiError(
+        "UPSTREAM_ERROR",
+        "The relayer did not submit the claim. This usually means the UTXO " +
+          "was already claimed or the relayer is having issues. Please retry.",
+        { logFields: { sdkResult: err.sdkResult } },
+      );
+    }
+
     const stage = (err as { stage?: string } | null)?.stage;
     const stack = err instanceof Error ? err.stack : undefined;
-    log.error("Claim failed", {
-      token,
-      stage,
-      message,
-      stack,
-    });
+    log.error("Claim failed", { token, stage, message, stack });
     return apiError("UPSTREAM_ERROR", "Claim submission failed", {
       logFields: { stage, message },
     });
   }
 
   // ── Mark claimed in Supabase ────────────────────────────────────────────
+  // Always update the signature column with the latest successful claim,
+  // so the DB reflects the most recent on-chain signature even after
+  // multiple drains. Status stays "claimed" once set.
   try {
     await markClaimTokenClaimed({
       token,
@@ -132,7 +138,7 @@ export async function POST(
     });
   } catch (err) {
     // Non-fatal. The on-chain claim succeeded; our DB is just out of sync.
-    log.error("Marked claim succeeded on-chain but DB update failed", {
+    log.error("Claim succeeded on-chain but DB update failed", {
       token,
       err: err instanceof Error ? err.message : String(err),
     });
@@ -140,7 +146,8 @@ export async function POST(
 
   return Response.json({
     ok: true,
-    alreadyClaimed: false,
     claimSignatures: claimResult.claimSignatures,
+    remainingUtxoCount: claimResult.remainingUtxoCount,
+    queueEmpty: claimResult.remainingUtxoCount === 0,
   });
 }

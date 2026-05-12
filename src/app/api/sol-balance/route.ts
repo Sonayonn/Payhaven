@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError } from "@/lib/api/errors";
 import { log } from "@/lib/log";
-import { verifyPrivyToken } from "@/lib/privy/server";
+import { verifyPrivyTokenAndGetIdentifiers } from "@/lib/privy/server";
 import { ensureSenderWallet } from "@/lib/privy/sender-wallet";
 import { getSolBalance } from "@/lib/umbra/sol-balance";
 
@@ -13,6 +13,11 @@ import { getSolBalance } from "@/lib/umbra/sol-balance";
  *
  * Polled by the dashboard alongside /api/sender-wallet and
  * /api/encrypted-balance to keep the gas indicator fresh.
+ *
+ * CRITICAL: must pass linkedIdentifiers to ensureSenderWallet, otherwise
+ * a brand-new login for a recipient with a pregenerated wallet will be
+ * orphaned with a fresh empty wallet. This route races /api/send and
+ * /api/sender-wallet on first dashboard load.
  */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -21,16 +26,19 @@ export async function GET(req: NextRequest) {
     return apiError("UNAUTHORIZED", "Missing Authorization header");
   }
 
-  let privyUserId: string;
+  let identity;
   try {
-    privyUserId = await verifyPrivyToken(token);
+    identity = await verifyPrivyTokenAndGetIdentifiers(token);
   } catch {
     return apiError("UNAUTHORIZED", "Invalid or expired token");
   }
 
   let wallet;
   try {
-    wallet = await ensureSenderWallet(privyUserId);
+    wallet = await ensureSenderWallet(identity.privyUserId, {
+      email: identity.email,
+      phone: identity.phone,
+    });
   } catch (err) {
     return apiError("UPSTREAM_ERROR", "Failed to resolve wallet", {
       logFields: { err: err instanceof Error ? err.message : String(err) },

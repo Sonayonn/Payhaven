@@ -38,7 +38,7 @@ export type LinkedIdentifiers = {
  */
 export async function ensureSenderWallet(
   privyUserId: string,
-  linkedIdentifiers: LinkedIdentifiers = { email: null, phone: null },
+  linkedIdentifiers: LinkedIdentifiers,
 ): Promise<ServerWallet> {
   const inFlight = inFlightProvisioning.get(privyUserId);
   if (inFlight) {
